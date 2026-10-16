@@ -4,23 +4,16 @@ import { supabase } from "../lib/supabase";
 import { useAuth } from "../auth";
 import { downloadCertificatePdf } from "../lib/pdf";
 
-type Kind = "inicial" | "final";
 interface Company { id: string; name: string }
 interface Plant { id: string; company_id: string; name: string }
+interface Prod { id: string; name: string }
+interface Veh { id: string; plate: string; driver_name: string; driver_id_card: string; transport_company: string }
 interface Cert { id: string; number: string; cert_date: string; operation: "recepcion" | "entrega"; product: string | null; plate: string | null; driver: string | null; total_volume: number | null; status: "emitido" | "anulado" }
-
-const MF: ReadonlyArray<readonly [string, string, string]> = [
-  ["measured_date", "Fecha", "date"], ["measured_time", "Hora", "time"], ["product_level", "Nivel producto", "number"], ["water_level", "Nivel agua", "number"],
-  ["api_gravity", "Grav. API", "number"], ["temp_f", "Temp. (°F)", "number"], ["avg_temp_f", "Temp. promedio (°F)", "number"], ["api_60f", "API a 60°F (Tabla 5B)", "number"],
-  ["tov", "TOV (L)", "number"], ["free_water", "Agua libre FW (L)", "number"], ["vcf", "VCF (Tabla 6B)", "number"], ["gsv", "GSV (L)", "number"]];
-const TXT: ReadonlyArray<readonly [string, string]> = [
-  ["measurement_type", "Tipo de medición"], ["product", "Producto"], ["tank_no", "Tanque #"], ["ticket_no", "Ticket de medición N°"],
-  ["from_dispatcher", "DE: Expedido"], ["from_delivery_point", "DE: Punto de entrega"], ["to_receiver", "A: Receptor"], ["to_reception_point", "A: Punto de recepción"],
-  ["driver", "Conductor"], ["driver_id_card", "Carnet de identidad"], ["plate", "Placa *"], ["transport_company", "Empresa de transporte"],
-  ["remito_volume", "Volumen remito (L)"], ["difference", "Diferencia (L)"],
-  ["sig_inspector_name", "Inspector (nombre)"], ["sig_carrier_name", "Representante transportista (nombre)"], ["sig_storage_name", "Representante almacenador (nombre)"]];
+const TXT: ReadonlyArray<readonly [string, string, boolean]> = [
+  ["from_dispatcher", "Expedido", false], ["to_receiver", "Receptor", false],
+  ["from_delivery_point", "Planta de carga", false], ["to_reception_point", "Planta de descarga", false],
+  ["storage_lot", "Lote almacenaje", false], ["tank_no", "Número tanque", true], ["ticket_no", "Ticket inspector", true]];
 const today = (): string => new Date().toLocaleDateString("en-CA", { timeZone: "America/La_Paz" });
-const blankM = (): Record<string, string> => Object.fromEntries(MF.map(([k]) => [k, ""]));
 const lt = (n: number | null): string => (n === null ? "—" : n.toLocaleString("es-BO") + " L");
 
 export default function Certificados() {
@@ -30,7 +23,10 @@ export default function Certificados() {
   const [companies, setCompanies] = useState<Company[]>([]);
   const [plants, setPlants] = useState<Plant[]>([]);
   const [f, setF] = useState<Record<string, string>>({ operation: "recepcion", cert_date: today(), company_id: "", plant_id: "", observations: "" });
-  const [m, setM] = useState<Record<Kind, Record<string, string>>>({ inicial: blankM(), final: blankM() });
+  const [vol, setVol] = useState({ inicial: "", final: "" });
+  const [prods, setProds] = useState<Prod[]>([]);
+  const [vehs, setVehs] = useState<Veh[]>([]);
+  const [plateQ, setPlateQ] = useState("");
   const [seals, setSeals] = useState<string[]>([""]);
   const [saved, setSaved] = useState<Cert | null>(null);
   const [err, setErr] = useState("");
@@ -43,13 +39,16 @@ export default function Certificados() {
   const [voidId, setVoidId] = useState<string | null>(null);
   const [reason, setReason] = useState("");
 
-  const total = m.inicial.gsv !== "" && m.final.gsv !== "" ? Number(m.final.gsv) - Number(m.inicial.gsv) : null;
-  const ok = canWrite && f.plate?.trim() && total !== null && !Number.isNaN(total) && !saved;
-  const why = !canWrite ? "Tu rol no puede registrar certificados." : saved ? "Certificado guardado. Limpia el formulario para crear otro." : !f.plate?.trim() ? "Falta la placa." : total === null ? "Ingresa el GSV inicial y el final." : "";
+  const total = vol.inicial !== "" && vol.final !== "" ? Number(vol.final) - Number(vol.inicial) : null;
+  const veh = vehs.find((v) => v.plate.toUpperCase() === plateQ.trim().toUpperCase()) ?? null;
+  const ok = canWrite && veh !== null && f.product?.trim() && total !== null && !Number.isNaN(total) && !saved;
+  const why = !canWrite ? "Tu rol no puede registrar certificados." : saved ? "Certificado guardado. Limpia el formulario para crear otro." : !f.product?.trim() ? "Falta el producto." : veh === null ? "Busca y elige una placa registrada." : total === null ? "Ingresa el volumen inicial y el final." : "";
 
   useEffect(() => {
     supabase.from("companies").select("id,name").eq("active", true).order("name").then(({ data }) => setCompanies((data as Company[] | null) ?? []));
     supabase.from("plants").select("id,company_id,name").eq("active", true).order("name").then(({ data }) => setPlants((data as Plant[] | null) ?? []));
+    supabase.from("products").select("id,name").eq("active", true).order("name").then(({ data }) => setProds((data as Prod[] | null) ?? []));
+    supabase.from("vehicles").select("id,plate,driver_name,driver_id_card,transport_company").eq("active", true).order("plate").then(({ data }) => setVehs((data as Veh[] | null) ?? []));
   }, []);
 
   const load = useCallback(async () => {
@@ -72,13 +71,15 @@ export default function Certificados() {
 
   const save = async () => {
     setErr(""); setBusy(true);
-    const p = { ...f, measurements: (["inicial", "final"] as Kind[]).map((k) => ({ kind: k, ...m[k] })), seals };
+    if (!veh) { setErr("Elige una placa registrada."); setBusy(false); return; }
+    const p = { ...f, plate: veh.plate, driver: veh.driver_name, driver_id_card: veh.driver_id_card, transport_company: veh.transport_company, sig_inspector_name: profile?.full_name ?? "",
+      measurements: [{ kind: "inicial", gsv: vol.inicial }, { kind: "final", gsv: vol.final }], seals };
     const { data, error } = await supabase.rpc("save_certificate", { p });
     setBusy(false);
     if (error) { setErr(error.message); return; }
     setSaved(data as Cert); void load();
   };
-  const reset = () => { setF({ operation: "recepcion", cert_date: today(), company_id: "", plant_id: "", observations: "" }); setM({ inicial: blankM(), final: blankM() }); setSeals([""]); setSaved(null); setErr(""); };
+  const reset = () => { setF({ operation: "recepcion", cert_date: today(), company_id: "", plant_id: "", observations: "" }); setVol({ inicial: "", final: "" }); setPlateQ(""); setSeals([""]); setSaved(null); setErr(""); };
   const doVoid = async () => {
     if (!voidId) return;
     const { error } = await supabase.rpc("void_certificate", { p_id: voidId, p_reason: reason });
@@ -101,16 +102,28 @@ export default function Certificados() {
     {canWrite && (<>
       {saved && <div className="banner" role="status">✓ Certificado guardado con el número <b className="mono">{saved.number}</b></div>}
       <div className="card grid" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))" }}>
-        <label className="f">Operación<select className="in" value={f.operation} onChange={set("operation")} disabled={dis}><option value="recepcion">Recepción</option><option value="entrega">Entrega</option></select></label>
         <label className="f">Fecha<input className="in" type="date" value={f.cert_date} onChange={set("cert_date")} disabled={dis} /></label>
+        <label className="f">Acción<select className="in" value={f.operation} onChange={set("operation")} disabled={dis}><option value="recepcion">Recepción (descarga)</option><option value="entrega">Entrega (carga)</option></select></label>
+        <label className="f">Producto *<select className="in" value={f.product ?? ""} onChange={set("product")} disabled={dis}><option value="">Elige…</option>{prods.map((p) => <option key={p.id} value={p.name}>{p.name}</option>)}</select></label>
         <label className="f">Cliente<select className="in" value={f.company_id} onChange={(e) => setF({ ...f, company_id: e.target.value, plant_id: "" })} disabled={dis}><option value="">Sin cliente</option>{companies.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
-        <label className="f">Planta<select className="in" value={f.plant_id} onChange={set("plant_id")} disabled={dis}><option value="">Sin planta</option>{plants.filter((p) => p.company_id === f.company_id).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
-        {TXT.map(([k, l]) => <label key={k} className="f">{l}<input className="in" style={{ textAlign: "left" }} type={k === "remito_volume" || k === "difference" ? "number" : "text"} value={f[k] ?? ""} onChange={set(k)} disabled={dis} /></label>)}
+        <label className="f">Planta del cliente<select className="in" value={f.plant_id} onChange={set("plant_id")} disabled={dis}><option value="">Sin planta</option>{plants.filter((p) => p.company_id === f.company_id).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
+        {TXT.map(([k, l, req]) => <label key={k} className="f">{l}{req ? " *" : ""}<input className="in" style={{ textAlign: "left" }} value={f[k] ?? ""} onChange={set(k)} disabled={dis} /></label>)}
+        <label className="f">Inspector<input className="in" style={{ textAlign: "left" }} value={profile?.full_name ?? ""} readOnly disabled /></label>
       </div>
-      <div className="card"><h2>Mediciones</h2>
-        <table><thead><tr><th>Campo</th><th>INICIAL</th><th>FINAL</th></tr></thead><tbody>
-          {MF.map(([k, l, t]) => <tr key={k}><td>{l}</td>{(["inicial", "final"] as Kind[]).map((kd) => <td key={kd}><input className="in" aria-label={`${l} ${kd}`} type={t} step="any" value={m[kd][k]} disabled={dis} onChange={(e) => setM({ ...m, [kd]: { ...m[kd], [k]: e.target.value } })} /></td>)}</tr>)}</tbody></table>
-        <p style={{ marginTop: 10 }}>Volumen total {f.operation === "recepcion" ? "recibido" : "entregado"} (GSV final − inicial): <b className="mono">{total === null || Number.isNaN(total) ? "—" : lt(total)}</b></p>
+      <div className="card"><h2>Datos de medición</h2>
+        <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))" }}>
+          <label className="f">Volumen inicial (L)<input className="in" type="number" step="any" value={vol.inicial} disabled={dis} onChange={(e) => setVol({ ...vol, inicial: e.target.value })} /></label>
+          <label className="f">Volumen final (L)<input className="in" type="number" step="any" value={vol.final} disabled={dis} onChange={(e) => setVol({ ...vol, final: e.target.value })} /></label></div>
+        <p style={{ marginTop: 10 }}>Volumen total {f.operation === "recepcion" ? "recibido" : "entregado"} (final − inicial): <b className="mono">{total === null || Number.isNaN(total) ? "—" : lt(total)}</b></p>
+      </div>
+      <div className="card"><h2>Datos transportista · cisterna</h2>
+        <label className="f">Buscar placa<input className="in mono" style={{ textAlign: "left", maxWidth: 260 }} list="placas" placeholder="Escribe la placa…" value={plateQ} disabled={dis} onChange={(e) => setPlateQ(e.target.value)} /></label>
+        <datalist id="placas">{vehs.map((v) => <option key={v.id} value={v.plate}>{v.driver_name}</option>)}</datalist>
+        {veh ? <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", marginTop: 8 }}>
+          <label className="f">Conductor<input className="in" style={{ textAlign: "left" }} value={veh.driver_name} readOnly disabled /></label>
+          <label className="f">Carnet de identidad<input className="in" style={{ textAlign: "left" }} value={veh.driver_id_card} readOnly disabled /></label>
+          <label className="f">Empresa de transporte<input className="in" style={{ textAlign: "left" }} value={veh.transport_company} readOnly disabled /></label></div>
+          : <p className="note">{plateQ.trim() ? "Placa no registrada. Pide al administrador registrarla en Configuración → Cisternas." : "Elige una placa registrada."}</p>}
       </div>
       <div className="card"><h2>Precintos</h2><div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
         {seals.map((s, i) => <input key={i} className="in mono" style={{ width: 130, textAlign: "left" }} aria-label={`Precinto ${i + 1}`} value={s} disabled={dis} onChange={(e) => setSeals(seals.map((x, j) => (j === i ? e.target.value : x)))} />)}

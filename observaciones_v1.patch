@@ -1,0 +1,808 @@
+diff --git a/src/App.tsx b/src/App.tsx
+index bf5c49d..56efb2f 100644
+--- a/src/App.tsx
++++ b/src/App.tsx
+@@ -1,13 +1,12 @@
+ import { useEffect, useRef, useState } from "react";
+ import { Navigate, NavLink, Outlet, Route, Routes, useLocation, useNavigate } from "react-router-dom";
+-import { BarChart3, Building2, FileText, Gauge, Layers, ListChecks, LayoutDashboard, Sun as SunIcon, Truck, Moon, Target, Settings, Sun, Users } from "lucide-react";
++import { BarChart3, Building2, FileText, Gauge, ListChecks, LayoutDashboard, Sun as SunIcon, Truck, Moon, Target, Settings, Sun, Users } from "lucide-react";
+ import { useAuth } from "./auth";
+ import { configured, supabase } from "./lib/supabase";
+ import Login from "./pages/Login";
+ import Certificados from "./pages/Certificados";
+ import Usuarios from "./pages/Usuarios";
+ import Contactos from "./pages/Contactos";
+-import Pipeline from "./pages/Pipeline";
+ import Oportunidades from "./pages/Oportunidades";
+ import Configuracion from "./pages/Configuracion";
+ import Servicios from "./pages/Servicios";
+@@ -18,7 +17,6 @@ import Actividades from "./pages/Actividades";
+ import SearchBox from "./SearchBox";
+ import Reportes from "./pages/Reportes";
+ import Volumenes from "./pages/Volumenes";
+-import Reasignacion from "./pages/Reasignacion";
+ 
+ function Layout() {
+   const { profile, signOut, setTheme } = useAuth();
+@@ -56,9 +54,7 @@ function Layout() {
+         <div className="grp">Comercial</div>
+         <NavLink to="/empresas" className="nav"><Building2 size={16} />Empresas</NavLink>
+         <NavLink to="/contactos" className="nav"><Users size={16} />Contactos</NavLink>
+-        {(profile.role === "admin" || profile.role === "sup_comercial") && <NavLink to="/reasignacion" className="nav"><Users size={16} />Reasignar leads</NavLink>}
+         <NavLink to="/oportunidades" className="nav"><Target size={16} />Oportunidades</NavLink>
+-        <NavLink to="/pipeline" className="nav"><Layers size={16} />Pipeline comercial</NavLink>
+         <div className="grp">Operaciones</div>
+         <NavLink to="/servicios" className="nav"><Truck size={16} />Servicios operativos</NavLink>
+         <NavLink to="/actividades" className="nav"><ListChecks size={16} />Actividades</NavLink>
+@@ -99,10 +95,8 @@ export default function App() {
+         <Route path="/volumenes" element={<Volumenes />} />
+         <Route path="/reportes" element={<Reportes />} />
+         <Route path="/contactos" element={<Contactos />} />
+-        <Route path="/reasignacion" element={profile.role === "admin" || profile.role === "sup_comercial" ? <Reasignacion /> : <Navigate to="/" replace />} />
+         <Route path="/oportunidades" element={<Oportunidades />} />
+         <Route path="/configuracion" element={profile.role === "admin" ? <Configuracion /> : <Navigate to="/" replace />} />
+-        <Route path="/pipeline" element={<Pipeline />} />
+         <Route path="/certificados" element={<Certificados />} />
+         <Route path="/usuarios" element={profile.role === "admin" ? <Usuarios /> : <Navigate to="/" replace />} />
+         <Route path="*" element={<Navigate to="/" replace />} />
+diff --git a/src/lib/pdf.ts b/src/lib/pdf.ts
+index d8e0af7..28465ea 100644
+--- a/src/lib/pdf.ts
++++ b/src/lib/pdf.ts
+@@ -3,7 +3,7 @@ import { supabase } from "./supabase";
+ 
+ interface Meas { kind: "inicial" | "final"; measured_date: string | null; measured_time: string | null; product_level: number | null; water_level: number | null; api_gravity: number | null; temp_f: number | null; avg_temp_f: number | null; api_60f: number | null; tov: number | null; free_water: number | null; vcf: number | null; gsv: number | null }
+ interface Full {
+-  number: string; operation: "recepcion" | "entrega"; cert_date: string; measurement_type: string | null; product: string | null; tank_no: string | null; ticket_no: string | null;
++  number: string; operation: "recepcion" | "entrega"; cert_date: string; measurement_type: string | null; product: string | null; tank_no: string | null; ticket_no: string | null; storage_lot: string | null;
+   from_dispatcher: string | null; from_delivery_point: string | null; to_receiver: string | null; to_reception_point: string | null;
+   total_volume: number | null; remito_volume: number | null; difference: number | null;
+   driver: string | null; driver_id_card: string | null; plate: string | null; transport_company: string | null; observations: string | null;
+@@ -46,20 +46,16 @@ export async function downloadCertificatePdf(id: string): Promise<void> {
+ 
+   // Tres bloques de dos casillas
+   const bw = 5.0;
+-  lv("FECHA", fd(c.cert_date), 0.5, 1.15, bw, 0.27, 0.9); lv("TIPO DE MEDICIÓN", c.measurement_type ?? "", 5.5, 1.15, bw, 0.27, 1.5);
++  lv("FECHA", fd(c.cert_date), 0.5, 1.15, bw, 0.27, 0.9); lv("LOTE ALMACENAJE", c.storage_lot ?? "", 5.5, 1.15, bw, 0.27, 1.5);
+   lv("PRODUCTO", c.product ?? "", 0.5, 1.42, bw, 0.27, 0.9); lv("TANQUE #", c.tank_no ?? "", 5.5, 1.42, bw, 0.27, 1.5);
+   lv("RECEPCIÓN", c.operation === "recepcion" ? "X" : "", 0.5, 1.69, bw, 0.27, 1.2); lv("ENTREGA", c.operation === "entrega" ? "X" : "", 5.5, 1.69, bw, 0.27, 1.2);
+ 
+   // DE: / A:
+   lv("DE: Expedido", c.from_dispatcher ?? "", 0.5, 2.02, bw, 0.27, 1.2); lv("A: Receptor", c.to_receiver ?? "", 5.5, 2.02, bw, 0.27, 1.2);
+-  lv("Punto de entrega", c.from_delivery_point ?? "", 0.5, 2.29, bw, 0.27, 1.2); lv("Punto de Recepción", c.to_reception_point ?? "", 5.5, 2.29, bw, 0.27, 1.2);
++  lv("Planta de carga", c.from_delivery_point ?? "", 0.5, 2.29, bw, 0.27, 1.2); lv("Planta de descarga", c.to_reception_point ?? "", 5.5, 2.29, bw, 0.27, 1.2);
+ 
+   // Tabla de mediciones
+-  const cols: { w: number; t: string; g?: string }[] = [
+-    { w: 0.75, t: "MEDICIÓN" }, { w: 0.75, t: "FECHA" }, { w: 0.55, t: "HORA" }, { w: 0.6, t: "Producto", g: "NIVEL" }, { w: 0.6, t: "Agua", g: "NIVEL" },
+-    { w: 0.65, t: "Grav. API", g: "MUESTRA" }, { w: 0.65, t: "Temp. °F", g: "MUESTRA" }, { w: 0.8, t: "TEMP. PROMEDIO" },
+-    { w: 1.0, t: "GRAVEDAD API A 60°F (Tabla 5B)" }, { w: 0.9, t: "VOLUMEN TOTAL OBSERVADO (TOV)" }, { w: 0.8, t: "AGUA LIBRE (FW)" },
+-    { w: 0.8, t: "FACTOR DE CORRECCIÓN DE VOLUMEN (VCF, Tabla 6B)" }, { w: 1.15, t: "VOLUMEN BRUTO ESTÁNDAR A 60°F (GSV)" }];
++  const cols: { w: number; t: string; g?: string }[] = [{ w: 3.0, t: "MEDICIÓN" }, { w: 3.0, t: "VOLUMEN (Litros)" }];
+   const wrap = (s: string, x: number, y: number, w: number, h: number) => {
+     doc.setFont("helvetica", "bold"); doc.setFontSize(5.5);
+     const lines = doc.splitTextToSize(s, w - 0.06) as string[];
+@@ -76,7 +72,7 @@ export async function downloadCertificatePdf(id: string): Promise<void> {
+   });
+   (["inicial", "final"] as const).forEach((kd, r) => {
+     const m = c.certificate_measurements.find((z) => z.kind === kd);
+-    const vals = [kd.toUpperCase(), fd(m?.measured_date ?? null), (m?.measured_time ?? "").slice(0, 5), n(m?.product_level, 3), n(m?.water_level, 3), n(m?.api_gravity, 2), n(m?.temp_f, 1), n(m?.avg_temp_f, 1), n(m?.api_60f, 2), n(m?.tov), n(m?.free_water), n(m?.vcf, 6), n(m?.gsv)];
++    const vals = [kd.toUpperCase(), n(m?.gsv)];
+     let cx = 0.5; cols.forEach((k, i) => { box(cx, ty + 0.5 + r * 0.28, k.w, 0.28); t(vals[i], cx, ty + 0.5 + r * 0.28, k.w, 0.28, 8, i === 0, "center"); cx += k.w; });
+   });
+ 
+@@ -84,7 +80,6 @@ export async function downloadCertificatePdf(id: string): Promise<void> {
+   lv("TICKET DE MEDICIÓN N°", c.ticket_no ?? "", 0.5, 3.78, 4.2, 0.27, 1.9);
+   lv("VOLUMEN TOTAL RECIBIDO/ENTREGADO (Litros)", n(c.total_volume), 5.2, 3.78, 5.3, 0.27, 3.7);
+   lv("VOLUMEN REMITO (Litros)", n(c.remito_volume), 5.2, 4.05, 5.3, 0.27, 3.7);
+-  lv("DIFERENCIA (Litros)", n(c.difference), 5.2, 4.32, 5.3, 0.27, 3.7);
+ 
+   // Cisterna y precintos
+   box(0.5, 4.67, 5.0, 0.25, "#BDD7EE"); t("DATOS DE CISTERNA", 0.5, 4.67, 5.0, 0.25, 8, true, "center");
+diff --git a/src/pages/Certificados.tsx b/src/pages/Certificados.tsx
+index 2bbbebd..09a2b35 100644
+--- a/src/pages/Certificados.tsx
++++ b/src/pages/Certificados.tsx
+@@ -4,23 +4,16 @@ import { supabase } from "../lib/supabase";
+ import { useAuth } from "../auth";
+ import { downloadCertificatePdf } from "../lib/pdf";
+ 
+-type Kind = "inicial" | "final";
+ interface Company { id: string; name: string }
+ interface Plant { id: string; company_id: string; name: string }
++interface Prod { id: string; name: string }
++interface Veh { id: string; plate: string; driver_name: string; driver_id_card: string; transport_company: string }
+ interface Cert { id: string; number: string; cert_date: string; operation: "recepcion" | "entrega"; product: string | null; plate: string | null; driver: string | null; total_volume: number | null; status: "emitido" | "anulado" }
+-
+-const MF: ReadonlyArray<readonly [string, string, string]> = [
+-  ["measured_date", "Fecha", "date"], ["measured_time", "Hora", "time"], ["product_level", "Nivel producto", "number"], ["water_level", "Nivel agua", "number"],
+-  ["api_gravity", "Grav. API", "number"], ["temp_f", "Temp. (°F)", "number"], ["avg_temp_f", "Temp. promedio (°F)", "number"], ["api_60f", "API a 60°F (Tabla 5B)", "number"],
+-  ["tov", "TOV (L)", "number"], ["free_water", "Agua libre FW (L)", "number"], ["vcf", "VCF (Tabla 6B)", "number"], ["gsv", "GSV (L)", "number"]];
+-const TXT: ReadonlyArray<readonly [string, string]> = [
+-  ["measurement_type", "Tipo de medición"], ["product", "Producto"], ["tank_no", "Tanque #"], ["ticket_no", "Ticket de medición N°"],
+-  ["from_dispatcher", "DE: Expedido"], ["from_delivery_point", "DE: Punto de entrega"], ["to_receiver", "A: Receptor"], ["to_reception_point", "A: Punto de recepción"],
+-  ["driver", "Conductor"], ["driver_id_card", "Carnet de identidad"], ["plate", "Placa *"], ["transport_company", "Empresa de transporte"],
+-  ["remito_volume", "Volumen remito (L)"], ["difference", "Diferencia (L)"],
+-  ["sig_inspector_name", "Inspector (nombre)"], ["sig_carrier_name", "Representante transportista (nombre)"], ["sig_storage_name", "Representante almacenador (nombre)"]];
++const TXT: ReadonlyArray<readonly [string, string, boolean]> = [
++  ["from_dispatcher", "Expedido", false], ["to_receiver", "Receptor", false],
++  ["from_delivery_point", "Planta de carga", false], ["to_reception_point", "Planta de descarga", false],
++  ["storage_lot", "Lote almacenaje", false], ["tank_no", "Número tanque", true], ["ticket_no", "Ticket inspector", true]];
+ const today = (): string => new Date().toLocaleDateString("en-CA", { timeZone: "America/La_Paz" });
+-const blankM = (): Record<string, string> => Object.fromEntries(MF.map(([k]) => [k, ""]));
+ const lt = (n: number | null): string => (n === null ? "—" : n.toLocaleString("es-BO") + " L");
+ 
+ export default function Certificados() {
+@@ -30,7 +23,10 @@ export default function Certificados() {
+   const [companies, setCompanies] = useState<Company[]>([]);
+   const [plants, setPlants] = useState<Plant[]>([]);
+   const [f, setF] = useState<Record<string, string>>({ operation: "recepcion", cert_date: today(), company_id: "", plant_id: "", observations: "" });
+-  const [m, setM] = useState<Record<Kind, Record<string, string>>>({ inicial: blankM(), final: blankM() });
++  const [vol, setVol] = useState({ inicial: "", final: "" });
++  const [prods, setProds] = useState<Prod[]>([]);
++  const [vehs, setVehs] = useState<Veh[]>([]);
++  const [plateQ, setPlateQ] = useState("");
+   const [seals, setSeals] = useState<string[]>([""]);
+   const [saved, setSaved] = useState<Cert | null>(null);
+   const [err, setErr] = useState("");
+@@ -43,13 +39,16 @@ export default function Certificados() {
+   const [voidId, setVoidId] = useState<string | null>(null);
+   const [reason, setReason] = useState("");
+ 
+-  const total = m.inicial.gsv !== "" && m.final.gsv !== "" ? Number(m.final.gsv) - Number(m.inicial.gsv) : null;
+-  const ok = canWrite && f.plate?.trim() && total !== null && !Number.isNaN(total) && !saved;
+-  const why = !canWrite ? "Tu rol no puede registrar certificados." : saved ? "Certificado guardado. Limpia el formulario para crear otro." : !f.plate?.trim() ? "Falta la placa." : total === null ? "Ingresa el GSV inicial y el final." : "";
++  const total = vol.inicial !== "" && vol.final !== "" ? Number(vol.final) - Number(vol.inicial) : null;
++  const veh = vehs.find((v) => v.plate.toUpperCase() === plateQ.trim().toUpperCase()) ?? null;
++  const ok = canWrite && veh !== null && f.product?.trim() && total !== null && !Number.isNaN(total) && !saved;
++  const why = !canWrite ? "Tu rol no puede registrar certificados." : saved ? "Certificado guardado. Limpia el formulario para crear otro." : !f.product?.trim() ? "Falta el producto." : veh === null ? "Busca y elige una placa registrada." : total === null ? "Ingresa el volumen inicial y el final." : "";
+ 
+   useEffect(() => {
+     supabase.from("companies").select("id,name").eq("active", true).order("name").then(({ data }) => setCompanies((data as Company[] | null) ?? []));
+     supabase.from("plants").select("id,company_id,name").eq("active", true).order("name").then(({ data }) => setPlants((data as Plant[] | null) ?? []));
++    supabase.from("products").select("id,name").eq("active", true).order("name").then(({ data }) => setProds((data as Prod[] | null) ?? []));
++    supabase.from("vehicles").select("id,plate,driver_name,driver_id_card,transport_company").eq("active", true).order("plate").then(({ data }) => setVehs((data as Veh[] | null) ?? []));
+   }, []);
+ 
+   const load = useCallback(async () => {
+@@ -72,13 +71,15 @@ export default function Certificados() {
+ 
+   const save = async () => {
+     setErr(""); setBusy(true);
+-    const p = { ...f, measurements: (["inicial", "final"] as Kind[]).map((k) => ({ kind: k, ...m[k] })), seals };
++    if (!veh) { setErr("Elige una placa registrada."); setBusy(false); return; }
++    const p = { ...f, plate: veh.plate, driver: veh.driver_name, driver_id_card: veh.driver_id_card, transport_company: veh.transport_company, sig_inspector_name: profile?.full_name ?? "",
++      measurements: [{ kind: "inicial", gsv: vol.inicial }, { kind: "final", gsv: vol.final }], seals };
+     const { data, error } = await supabase.rpc("save_certificate", { p });
+     setBusy(false);
+     if (error) { setErr(error.message); return; }
+     setSaved(data as Cert); void load();
+   };
+-  const reset = () => { setF({ operation: "recepcion", cert_date: today(), company_id: "", plant_id: "", observations: "" }); setM({ inicial: blankM(), final: blankM() }); setSeals([""]); setSaved(null); setErr(""); };
++  const reset = () => { setF({ operation: "recepcion", cert_date: today(), company_id: "", plant_id: "", observations: "" }); setVol({ inicial: "", final: "" }); setPlateQ(""); setSeals([""]); setSaved(null); setErr(""); };
+   const doVoid = async () => {
+     if (!voidId) return;
+     const { error } = await supabase.rpc("void_certificate", { p_id: voidId, p_reason: reason });
+@@ -101,16 +102,28 @@ export default function Certificados() {
+     {canWrite && (<>
+       {saved && <div className="banner" role="status">✓ Certificado guardado con el número <b className="mono">{saved.number}</b></div>}
+       <div className="card grid" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))" }}>
+-        <label className="f">Operación<select className="in" value={f.operation} onChange={set("operation")} disabled={dis}><option value="recepcion">Recepción</option><option value="entrega">Entrega</option></select></label>
+         <label className="f">Fecha<input className="in" type="date" value={f.cert_date} onChange={set("cert_date")} disabled={dis} /></label>
++        <label className="f">Acción<select className="in" value={f.operation} onChange={set("operation")} disabled={dis}><option value="recepcion">Recepción (descarga)</option><option value="entrega">Entrega (carga)</option></select></label>
++        <label className="f">Producto *<select className="in" value={f.product ?? ""} onChange={set("product")} disabled={dis}><option value="">Elige…</option>{prods.map((p) => <option key={p.id} value={p.name}>{p.name}</option>)}</select></label>
+         <label className="f">Cliente<select className="in" value={f.company_id} onChange={(e) => setF({ ...f, company_id: e.target.value, plant_id: "" })} disabled={dis}><option value="">Sin cliente</option>{companies.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
+-        <label className="f">Planta<select className="in" value={f.plant_id} onChange={set("plant_id")} disabled={dis}><option value="">Sin planta</option>{plants.filter((p) => p.company_id === f.company_id).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
+-        {TXT.map(([k, l]) => <label key={k} className="f">{l}<input className="in" style={{ textAlign: "left" }} type={k === "remito_volume" || k === "difference" ? "number" : "text"} value={f[k] ?? ""} onChange={set(k)} disabled={dis} /></label>)}
++        <label className="f">Planta del cliente<select className="in" value={f.plant_id} onChange={set("plant_id")} disabled={dis}><option value="">Sin planta</option>{plants.filter((p) => p.company_id === f.company_id).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
++        {TXT.map(([k, l, req]) => <label key={k} className="f">{l}{req ? " *" : ""}<input className="in" style={{ textAlign: "left" }} value={f[k] ?? ""} onChange={set(k)} disabled={dis} /></label>)}
++        <label className="f">Inspector<input className="in" style={{ textAlign: "left" }} value={profile?.full_name ?? ""} readOnly disabled /></label>
++      </div>
++      <div className="card"><h2>Datos de medición</h2>
++        <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))" }}>
++          <label className="f">Volumen inicial (L)<input className="in" type="number" step="any" value={vol.inicial} disabled={dis} onChange={(e) => setVol({ ...vol, inicial: e.target.value })} /></label>
++          <label className="f">Volumen final (L)<input className="in" type="number" step="any" value={vol.final} disabled={dis} onChange={(e) => setVol({ ...vol, final: e.target.value })} /></label></div>
++        <p style={{ marginTop: 10 }}>Volumen total {f.operation === "recepcion" ? "recibido" : "entregado"} (final − inicial): <b className="mono">{total === null || Number.isNaN(total) ? "—" : lt(total)}</b></p>
+       </div>
+-      <div className="card"><h2>Mediciones</h2>
+-        <table><thead><tr><th>Campo</th><th>INICIAL</th><th>FINAL</th></tr></thead><tbody>
+-          {MF.map(([k, l, t]) => <tr key={k}><td>{l}</td>{(["inicial", "final"] as Kind[]).map((kd) => <td key={kd}><input className="in" aria-label={`${l} ${kd}`} type={t} step="any" value={m[kd][k]} disabled={dis} onChange={(e) => setM({ ...m, [kd]: { ...m[kd], [k]: e.target.value } })} /></td>)}</tr>)}</tbody></table>
+-        <p style={{ marginTop: 10 }}>Volumen total {f.operation === "recepcion" ? "recibido" : "entregado"} (GSV final − inicial): <b className="mono">{total === null || Number.isNaN(total) ? "—" : lt(total)}</b></p>
++      <div className="card"><h2>Datos transportista · cisterna</h2>
++        <label className="f">Buscar placa<input className="in mono" style={{ textAlign: "left", maxWidth: 260 }} list="placas" placeholder="Escribe la placa…" value={plateQ} disabled={dis} onChange={(e) => setPlateQ(e.target.value)} /></label>
++        <datalist id="placas">{vehs.map((v) => <option key={v.id} value={v.plate}>{v.driver_name}</option>)}</datalist>
++        {veh ? <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", marginTop: 8 }}>
++          <label className="f">Conductor<input className="in" style={{ textAlign: "left" }} value={veh.driver_name} readOnly disabled /></label>
++          <label className="f">Carnet de identidad<input className="in" style={{ textAlign: "left" }} value={veh.driver_id_card} readOnly disabled /></label>
++          <label className="f">Empresa de transporte<input className="in" style={{ textAlign: "left" }} value={veh.transport_company} readOnly disabled /></label></div>
++          : <p className="note">{plateQ.trim() ? "Placa no registrada. Pide al administrador registrarla en Configuración → Cisternas." : "Elige una placa registrada."}</p>}
+       </div>
+       <div className="card"><h2>Precintos</h2><div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+         {seals.map((s, i) => <input key={i} className="in mono" style={{ width: 130, textAlign: "left" }} aria-label={`Precinto ${i + 1}`} value={s} disabled={dis} onChange={(e) => setSeals(seals.map((x, j) => (j === i ? e.target.value : x)))} />)}
+diff --git a/src/pages/Configuracion.tsx b/src/pages/Configuracion.tsx
+index 8e9b566..7360313 100644
+--- a/src/pages/Configuracion.tsx
++++ b/src/pages/Configuracion.tsx
+@@ -4,7 +4,7 @@ import { supabase } from "../lib/supabase";
+ interface Item { id: string; name: string; active: boolean }
+ interface Plant { id: string; company_id: string; name: string; location: string | null; active: boolean }
+ interface Svc extends Item { default_price: number; unit_id: string | null }
+-const TABS = ["Empresa", "Metas", "Pipeline", "Automatizaciones", "Campos personalizados", "Orígenes de leads", "Servicios", "Productos", "Motivos de pérdida"] as const;
++const TABS = ["Empresa", "Metas", "Pipeline", "Automatizaciones", "Campos personalizados", "Orígenes de leads", "Servicios", "Productos", "Cisternas", "Motivos de pérdida"] as const;
+ type Tab = (typeof TABS)[number];
+ 
+ function Simple({ table }: { table: "lead_sources" | "loss_reasons" | "products" }) {
+@@ -146,9 +146,39 @@ function Campos() {
+     <table><tbody>{rows.map((r) => <tr key={r.id}><td>{r.entity === "contact" ? "Contactos" : "Oportunidades"}</td><td>{r.name}{r.required ? " *" : ""}</td><td>{r.field_type}</td><td>{r.active ? "✓ Activo" : "○ Inactivo"}</td><td className="n"><button className="btn" onClick={() => void tog(r)}>{r.active ? "Desactivar" : "Reactivar"}</button></td></tr>)}</tbody></table></div>;
+ }
+ 
++interface Veh { id: string; plate: string; driver_name: string; driver_id_card: string; transport_company: string; active: boolean }
++function Cisternas() {
++  const [rows, setRows] = useState<Veh[]>([]);
++  const [n, setN] = useState({ plate: "", driver: "", ci: "", company: "" });
++  const [err, setErr] = useState("");
++  const load = useCallback(async () => { const { data, error } = await supabase.from("vehicles").select("*").order("plate"); if (error) setErr(error.message); else setRows((data as Veh[] | null) ?? []); }, []);
++  useEffect(() => { void load(); }, [load]);
++  const add = async (e: FormEvent) => {
++    e.preventDefault();
++    const { error } = await supabase.from("vehicles").insert({ plate: n.plate.trim().toUpperCase(), driver_name: n.driver.trim(), driver_id_card: n.ci.trim(), transport_company: n.company.trim() });
++    setErr(error ? (error.message.includes("duplicate") ? "Esa placa ya está registrada." : error.message) : ""); if (!error) setN({ plate: "", driver: "", ci: "", company: "" }); void load();
++  };
++  const upd = async (r: Veh, patch: Partial<Veh>) => { const { error } = await supabase.from("vehicles").update(patch).eq("id", r.id); setErr(error?.message ?? ""); void load(); };
++  return <div className="card"><p className="note">Registra aquí cada cisterna. Al hacer un certificado se busca por placa y se llenan conductor, carnet y empresa.</p>
++    <form onSubmit={(e) => void add(e)} style={{ display: "flex", gap: 8, flexWrap: "wrap", margin: "8px 0" }}>
++      <input className="in mono" style={{ maxWidth: 120 }} required placeholder="Placa" aria-label="Placa" value={n.plate} onChange={(e) => setN({ ...n, plate: e.target.value })} />
++      <input className="in" style={{ maxWidth: 200 }} required placeholder="Nombre del conductor" aria-label="Conductor" value={n.driver} onChange={(e) => setN({ ...n, driver: e.target.value })} />
++      <input className="in" style={{ maxWidth: 140 }} required placeholder="Carnet de identidad" aria-label="Carnet de identidad" value={n.ci} onChange={(e) => setN({ ...n, ci: e.target.value })} />
++      <input className="in" style={{ maxWidth: 200 }} required placeholder="Empresa de transporte" aria-label="Empresa de transporte" value={n.company} onChange={(e) => setN({ ...n, company: e.target.value })} />
++      <button className="btn p">Agregar cisterna</button></form>
++    {err && <p className="err" role="alert">{err}</p>}
++    <table><thead><tr><th>Placa</th><th>Conductor</th><th>Carnet</th><th>Empresa de transporte</th><th>Estado</th><th /></tr></thead><tbody>{rows.map((r) => <tr key={r.id}>
++      <td className="mono">{r.plate}</td>
++      <td><input className="in" aria-label={`Conductor ${r.plate}`} defaultValue={r.driver_name} onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== r.driver_name) void upd(r, { driver_name: v }); }} /></td>
++      <td><input className="in" aria-label={`Carnet ${r.plate}`} defaultValue={r.driver_id_card} onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== r.driver_id_card) void upd(r, { driver_id_card: v }); }} /></td>
++      <td><input className="in" aria-label={`Empresa ${r.plate}`} defaultValue={r.transport_company} onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== r.transport_company) void upd(r, { transport_company: v }); }} /></td>
++      <td>{r.active ? "✓ Activa" : "○ Inactiva"}</td><td className="n"><button className="btn" onClick={() => void upd(r, { active: !r.active })}>{r.active ? "Desactivar" : "Reactivar"}</button></td></tr>)}</tbody></table>
++    {!rows.length && <p className="note">Aún no hay cisternas registradas.</p>}</div>;
++}
++
+ export default function Configuracion() {
+   const [tab, setTab] = useState<Tab>("Empresa");
+   return <><h1>Configuración</h1>
+     <div className="tabs" role="tablist">{TABS.map((t) => <button key={t} role="tab" aria-selected={tab === t} onClick={() => setTab(t)}>{t}</button>)}</div>
+-    {tab === "Empresa" && <Empresa />}{tab === "Metas" && <Metas />}{tab === "Pipeline" && <PipelineCfg />}{tab === "Automatizaciones" && <Automatizaciones />}{tab === "Campos personalizados" && <Campos />}{tab === "Productos" && <Simple table="products" />}{tab === "Orígenes de leads" && <Simple table="lead_sources" />}{tab === "Servicios" && <Servicios />}{tab === "Motivos de pérdida" && <Simple table="loss_reasons" />}</>;
++    {tab === "Empresa" && <Empresa />}{tab === "Metas" && <Metas />}{tab === "Pipeline" && <PipelineCfg />}{tab === "Automatizaciones" && <Automatizaciones />}{tab === "Campos personalizados" && <Campos />}{tab === "Productos" && <Simple table="products" />}{tab === "Orígenes de leads" && <Simple table="lead_sources" />}{tab === "Servicios" && <Servicios />}{tab === "Cisternas" && <Cisternas />}{tab === "Motivos de pérdida" && <Simple table="loss_reasons" />}</>;
+ }
+diff --git a/src/pages/Empresas.tsx b/src/pages/Empresas.tsx
+index 80da5e3..f95ea4d 100644
+--- a/src/pages/Empresas.tsx
++++ b/src/pages/Empresas.tsx
+@@ -22,7 +22,7 @@ export default function Empresas() {
+   const [nc, setNc] = useState({ name: "", tax: "", city: "", address: "" });
+   const [ed, setEd] = useState({ name: "", tax: "", city: "", address: "" });
+   const [np, setNp] = useState({ name: "", loc: "" });
+-  const [pr, setPr] = useState({ product: "", other: "", plant: "" });
++  const [pr, setPr] = useState({ product: "", plant: "" });
+   const [sv, setSv] = useState({ service: "", plant: "", notes: "" });
+ 
+   const loadCos = useCallback(async () => {
+@@ -54,15 +54,9 @@ export default function Empresas() {
+   const addPlant = async (e: FormEvent) => { e.preventDefault(); if (!sel) return; const { error } = await supabase.from("plants").insert({ company_id: sel.id, name: np.name.trim(), location: np.loc || null }); setNp({ name: "", loc: "" }); after(error); };
+   const togPlant = async (p: Plant) => { const { error } = await supabase.from("plants").update({ active: !p.active }).eq("id", p.id); after(error); };
+   const addProduct = async (e: FormEvent) => {
+-    e.preventDefault(); if (!sel) return;
+-    let pid = pr.product;
+-    if (!pid && pr.other.trim()) {
+-      const { data, error } = await supabase.from("products").insert({ name: pr.other.trim() }).select("id").single();
+-      if (error) { setErr(error.message.includes("duplicate") ? "Ese producto ya existe: elígelo de la lista." : error.message); return; }
+-      pid = (data as { id: string }).id; loadCatalogs();
+-    }
+-    const { error } = await supabase.from("company_products").insert({ company_id: sel.id, product_id: pid, plant_id: pr.plant || null });
+-    setPr({ product: "", other: "", plant: "" }); after(error);
++    e.preventDefault(); if (!sel || !pr.product) return;
++    const { error } = await supabase.from("company_products").insert({ company_id: sel.id, product_id: pr.product, plant_id: pr.plant || null });
++    setPr({ product: "", plant: "" }); after(error);
+   };
+   const addService = async (e: FormEvent) => { e.preventDefault(); if (!sel) return; const { error } = await supabase.from("company_services").insert({ company_id: sel.id, service_id: sv.service, plant_id: sv.plant || null, notes: sv.notes || null }); setSv({ service: "", plant: "", notes: "" }); after(error); };
+   const del = async (table: "company_products" | "company_services", id: string) => { const { error } = await supabase.from(table).delete().eq("id", id); after(error); };
+@@ -97,10 +91,9 @@ export default function Empresas() {
+         {cps.map((r) => <div key={r.id} style={{ display: "flex", gap: 8, alignItems: "center", minHeight: 34 }}><b>{r.products?.name}</b><span className="note">→ {r.plants?.name ?? "planta por definir"}</span><button className="btn d" aria-label="Quitar producto" onClick={() => void del("company_products", r.id)}>Quitar</button></div>)}
+         {!cps.length && <p className="note">Sin productos registrados.</p>}
+         <form onSubmit={(e) => void addProduct(e)} style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 6 }}>
+-          <select className="in" style={{ maxWidth: 160 }} aria-label="Producto" value={pr.product} onChange={(e) => setPr({ ...pr, product: e.target.value, other: "" })}><option value="">Producto…</option>{products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
+-          <input className="in" style={{ maxWidth: 150 }} placeholder="…u otro producto" aria-label="Otro producto" disabled={Boolean(pr.product)} value={pr.other} onChange={(e) => setPr({ ...pr, other: e.target.value })} />
++          <select className="in" style={{ maxWidth: 160 }} aria-label="Producto" value={pr.product} onChange={(e) => setPr({ ...pr, product: e.target.value })}><option value="">Producto…</option>{products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
+           {plantSel(pr.plant, (x) => setPr({ ...pr, plant: x }), "Planta de llegada", "Planta por definir")}
+-          <button className="btn" disabled={!pr.product && !pr.other.trim()}>Agregar producto</button></form>
++          <button className="btn" disabled={!pr.product}>Agregar producto</button></form>
+ 
+         <h2 style={{ marginTop: 14 }}>Servicios que necesita</h2>
+         {css.map((r) => <div key={r.id} style={{ display: "flex", gap: 8, alignItems: "center", minHeight: 34, flexWrap: "wrap" }}><b>{r.services_catalog?.name}</b><span className="note">→ {r.plants?.name ?? "todas las plantas"}{r.notes ? ` · ${r.notes}` : ""}</span><button className="btn d" aria-label="Quitar servicio" onClick={() => void del("company_services", r.id)}>Quitar</button></div>)}
+diff --git a/src/pages/Oportunidades.tsx b/src/pages/Oportunidades.tsx
+index 3aa15f4..27b41ff 100644
+--- a/src/pages/Oportunidades.tsx
++++ b/src/pages/Oportunidades.tsx
+@@ -4,11 +4,12 @@ import { supabase } from "../lib/supabase";
+ import { downloadQuotePdf } from "../lib/quotePdf";
+ import CustomFields from "../CustomFields";
+ 
+-interface Opp { id: string; title: string; amount: number; weighted_amount: number; status: "open" | "won" | "lost"; pipeline_stages: { name: string } | null; companies: { name: string } | null }
++interface Opp { id: string; title: string; amount: number; weighted_amount: number; status: "open" | "won" | "lost"; stage_id: string; pipeline_id: string; pipeline_stages: { name: string } | null; companies: { name: string } | null }
+ interface Line { id: string; description: string | null; quantity: number; list_price: number; discount_pct: number; final_price: number; line_total: number; unit_id: string | null; service_id: string | null }
+ interface Hist { id: string; old_amount: number | null; new_amount: number | null; comment: string | null; created_at: string }
+ interface Quote { id: string; number: string; current_version: number; status: string; valid_until: string | null }
+ interface Opt { id: string; name: string }
++interface Stage { id: string; name: string; kind: "open" | "won" | "lost" }
+ interface Svc extends Opt { default_price: number; unit_id: string | null }
+ const bs = (v: number | null): string => (v === null ? "—" : "Bs " + Number(v).toLocaleString("es-BO", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+ const ST = { open: "● Abierta", won: "✓ Ganada", lost: "▲ Perdida" } as const;
+@@ -24,14 +25,19 @@ export default function Oportunidades() {
+   const [companies, setCompanies] = useState<Opt[]>([]);
+   const [sources, setSources] = useState<Opt[]>([]);
+   const [err, setErr] = useState("");
+-  const [ln, setLn] = useState({ svc: "", qty: "1", disc: "0" });
++  const [ln, setLn] = useState({ svc: "", qty: "1", disc: "0", price: "" });
++  const [ttl, setTtl] = useState("");
++  const [stages, setStages] = useState<Stage[]>([]);
++  const [reasons, setReasons] = useState<Opt[]>([]);
++  const [pend, setPend] = useState<Stage | null>(null);
++  const [reason, setReason] = useState("");
+   const [man, setMan] = useState({ amount: "", comment: "" });
+   const [qf, setQf] = useState({ valid: "", terms: "" });
+   const [open, setOpen] = useState(false);
+   const [no, setNo] = useState({ title: "", company: "", source: "" });
+ 
+   const load = useCallback(async () => {
+-    const { data, error } = await supabase.from("opportunities").select("id,title,amount,weighted_amount,status,pipeline_stages(name),companies(name)").order("created_at", { ascending: false }).limit(200);
++    const { data, error } = await supabase.from("opportunities").select("id,title,amount,weighted_amount,status,stage_id,pipeline_id,pipeline_stages(name),companies(name)").order("created_at", { ascending: false }).limit(200);
+     if (error) setErr(error.message); else setRows((data as unknown as Opp[] | null) ?? []);
+   }, []);
+   const loadDetail = useCallback(async (id: string) => {
+@@ -40,13 +46,18 @@ export default function Oportunidades() {
+       supabase.from("negotiation_history").select("*").eq("opportunity_id", id).order("created_at", { ascending: false }),
+       supabase.from("quotations").select("id,number,current_version,status,valid_until").eq("opportunity_id", id).order("created_at")]);
+     setLines((l.data as Line[] | null) ?? []); setHist((h.data as Hist[] | null) ?? []); setQuotes((q.data as Quote[] | null) ?? []);
+-    const { data: o } = await supabase.from("opportunities").select("id,title,amount,weighted_amount,status,pipeline_stages(name),companies(name)").eq("id", id).single();
+-    if (o) setSel(o as unknown as Opp);
++    const { data: o } = await supabase.from("opportunities").select("id,title,amount,weighted_amount,status,stage_id,pipeline_id,pipeline_stages(name),companies(name)").eq("id", id).single();
++    if (o) {
++      const op = o as unknown as Opp; setSel(op); setTtl(op.title);
++      const { data: st } = await supabase.from("pipeline_stages").select("id,name,kind").eq("pipeline_id", op.pipeline_id).order("sort");
++      setStages((st as Stage[] | null) ?? []);
++    }
+   }, []);
+   useEffect(() => {
+     void load();
+     supabase.from("services_catalog").select("id,name,default_price,unit_id").eq("active", true).order("name").then(({ data }) => setSvcs((data as Svc[] | null) ?? []));
+     supabase.from("companies").select("id,name").order("name").then(({ data }) => setCompanies((data as Opt[] | null) ?? []));
++    supabase.from("loss_reasons").select("id,name").eq("active", true).order("name").then(({ data }) => setReasons((data as Opt[] | null) ?? []));
+     supabase.from("lead_sources").select("id,name").eq("active", true).order("sort").then(({ data }) => setSources((data as Opt[] | null) ?? []));
+   }, [load]);
+   useEffect(() => { setErr(""); if (sel) void loadDetail(sel.id); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [sel?.id, loadDetail]);
+@@ -54,9 +65,18 @@ export default function Oportunidades() {
+   const refresh = () => { void load(); if (sel) void loadDetail(sel.id); };
+   const addLine = async (e: FormEvent) => {
+     e.preventDefault(); const s = svcs.find((x) => x.id === ln.svc); if (!sel || !s) return;
+-    const { error } = await supabase.from("opportunity_items").insert({ opportunity_id: sel.id, service_id: s.id, description: s.name, unit_id: s.unit_id, quantity: Number(ln.qty), list_price: Number(s.default_price), discount_pct: Number(ln.disc) });
+-    setErr(error?.message ?? ""); setLn({ svc: "", qty: "1", disc: "0" }); refresh();
++    const { error } = await supabase.from("opportunity_items").insert({ opportunity_id: sel.id, service_id: s.id, description: s.name, unit_id: s.unit_id, quantity: Number(ln.qty), list_price: Number(ln.price === "" ? s.default_price : ln.price), discount_pct: Number(ln.disc) });
++    setErr(error?.message ?? ""); setLn({ svc: "", qty: "1", disc: "0", price: "" }); refresh();
+   };
++  const saveTitle = async () => {
++    if (!sel || !ttl.trim() || ttl.trim() === sel.title) return;
++    const { error } = await supabase.from("opportunities").update({ title: ttl.trim() }).eq("id", sel.id); setErr(error?.message ?? ""); refresh();
++  };
++  const applyStage = async (st: Stage, lossReason?: string) => {
++    if (!sel) return;
++    const { error } = await supabase.from("opportunities").update({ stage_id: st.id, loss_reason_id: lossReason ?? null }).eq("id", sel.id); setErr(error?.message ?? ""); refresh();
++  };
++  const moveStage = (id: string) => { const st = stages.find((x) => x.id === id); if (!st || !sel || st.id === sel.stage_id) return; if (st.kind === "lost") { setPend(st); setReason(""); } else void applyStage(st); };
+   const delLine = async (id: string) => { const { error } = await supabase.from("opportunity_items").delete().eq("id", id); setErr(error?.message ?? ""); refresh(); };
+   const setAmount = async (e: FormEvent) => {
+     e.preventDefault(); if (!sel) return;
+@@ -68,8 +88,9 @@ export default function Oportunidades() {
+     const { data: cs } = await supabase.from("settings").select("value").eq("key", "company").maybeSingle();
+     const fiscal = (cs as { value: { fiscal?: Record<string, string> } } | null)?.value.fiscal ?? {};
+     const items = lines.map((l) => ({ service_id: l.service_id, description: l.description ?? "Servicio", quantity: l.quantity, unit_price: l.list_price, discount_pct: l.discount_pct }));
+-    const { error } = await supabase.rpc("save_quotation", { p: { opportunity_id: sel.id, quotation_id: quotes[0]?.id ?? null, valid_until: qf.valid || null, payment_terms: qf.terms, fiscal, items } });
++    const { data, error } = await supabase.rpc("save_quotation", { p: { opportunity_id: sel.id, quotation_id: quotes[0]?.id ?? null, valid_until: qf.valid || null, payment_terms: qf.terms, fiscal, items } });
+     setErr(error?.message ?? ""); refresh();
++    if (!error && data) await downloadQuotePdf(data as string).catch((e: unknown) => setErr(e instanceof Error ? e.message : "Error de PDF"));
+   };
+   const qStatus = async (id: string, status: string) => { const { error } = await supabase.from("quotations").update({ status }).eq("id", id); setErr(error?.message ?? ""); refresh(); };
+   const create = async (e: FormEvent) => {
+@@ -79,8 +100,9 @@ export default function Oportunidades() {
+     const { data: st } = await supabase.from("pipeline_stages").select("id").eq("pipeline_id", pid ?? "").eq("kind", "open").order("sort").limit(1);
+     const stage = (st as { id: string }[] | null)?.[0]?.id;
+     if (!pid || !stage) { setErr("No hay pipeline con etapas abiertas."); return; }
+-    const { error } = await supabase.from("opportunities").insert({ title: no.title.trim(), company_id: no.company || null, source_id: no.source, pipeline_id: pid, stage_id: stage });
+-    setErr(error?.message ?? ""); setNo({ title: "", company: "", source: "" }); setOpen(false); void load();
++    const { data, error } = await supabase.from("opportunities").insert({ title: no.title.trim(), company_id: no.company || null, source_id: no.source, pipeline_id: pid, stage_id: stage }).select("id,title,amount,weighted_amount,status,stage_id,pipeline_id,pipeline_stages(name),companies(name)").single();
++    setErr(error?.message ?? ""); if (error) return;
++    setNo({ title: "", company: "", source: "" }); setOpen(false); void load(); setSel(data as unknown as Opp);
+   };
+ 
+   return (<>
+@@ -95,11 +117,18 @@ export default function Oportunidades() {
+       {rows.map((r) => <tr key={r.id} onClick={() => setSel(r)} style={{ cursor: "pointer", background: sel?.id === r.id ? "var(--bg)" : "none" }}><td>{r.title}</td><td>{r.companies?.name ?? "—"}</td><td>{ST[r.status]} · {r.pipeline_stages?.name}</td><td className="n mono">{bs(r.amount)}</td><td className="n mono">{bs(r.weighted_amount)}</td></tr>)}</tbody></table>
+       {!rows.length && <p className="note">Aún no hay oportunidades. Crea una o pasa un contacto a lead.</p>}</div>
+     {sel && <div className="grid g2">
+-      <div className="card"><h2>Negociación: {sel.title}</h2>
++      <div className="card"><h2>Negociación</h2>
++        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
++          <input className="in" style={{ maxWidth: 300 }} aria-label="Título de la oportunidad" value={ttl} onChange={(e) => setTtl(e.target.value)} />
++          <button className="btn" disabled={!ttl.trim() || ttl.trim() === sel.title} onClick={() => void saveTitle()}>Guardar título</button>
++          <select className="in" style={{ maxWidth: 200 }} aria-label="Etapa" value={sel.stage_id} onChange={(e) => moveStage(e.target.value)}>{stages.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}</select></div>
++        {pend && <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}><select className="in" style={{ maxWidth: 220 }} aria-label="Motivo de pérdida" value={reason} onChange={(e) => setReason(e.target.value)}><option value="">Motivo de pérdida…</option>{reasons.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}</select>
++          <button className="btn d" disabled={!reason} onClick={() => { void applyStage(pend, reason); setPend(null); }}>Confirmar pérdida</button><button className="btn" onClick={() => setPend(null)}>Cancelar</button></div>}
+         <table><thead><tr><th>Servicio</th><th className="n">Cant.</th><th className="n">Lista</th><th className="n">Desc.</th><th className="n">Final</th><th className="n">Total</th><th /></tr></thead><tbody>
+           {lines.map((l) => <tr key={l.id}><td>{l.description}</td><td className="n mono">{l.quantity}</td><td className="n mono">{bs(l.list_price)}</td><td className="n mono">{l.discount_pct} %</td><td className="n mono">{bs(l.final_price)}</td><td className="n mono">{bs(l.line_total)}</td><td className="n">{sel.status === "open" && <button className="btn d" aria-label="Quitar línea" onClick={() => void delLine(l.id)}>Quitar</button>}</td></tr>)}</tbody></table>
+         {sel.status === "open" && <form onSubmit={(e) => void addLine(e)} style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
+-          <select className="in" style={{ maxWidth: 240 }} required aria-label="Servicio" value={ln.svc} onChange={(e) => setLn({ ...ln, svc: e.target.value })}><option value="">Servicio…</option>{svcs.map((s) => <option key={s.id} value={s.id}>{s.name} — {bs(s.default_price)}</option>)}</select>
++          <select className="in" style={{ maxWidth: 240 }} required aria-label="Servicio" value={ln.svc} onChange={(e) => setLn({ ...ln, svc: e.target.value, price: String(svcs.find((x) => x.id === e.target.value)?.default_price ?? "") })}><option value="">Servicio…</option>{svcs.map((s) => <option key={s.id} value={s.id}>{s.name} — {bs(s.default_price)}</option>)}</select>
++          <input className="in" style={{ width: 110 }} type="number" min="0" step="0.01" aria-label="Precio Bs" placeholder="Precio Bs" value={ln.price} onChange={(e) => setLn({ ...ln, price: e.target.value })} />
+           <input className="in" style={{ width: 80 }} type="number" min="1" step="any" aria-label="Cantidad" value={ln.qty} onChange={(e) => setLn({ ...ln, qty: e.target.value })} />
+           <input className="in" style={{ width: 90 }} type="number" min="0" max="100" step="any" aria-label="Descuento %" value={ln.disc} onChange={(e) => setLn({ ...ln, disc: e.target.value })} />
+           <button className="btn p" disabled={!ln.svc}>Agregar línea</button></form>}
+diff --git a/src/pages/Pipeline.tsx b/src/pages/Pipeline.tsx
+deleted file mode 100644
+index 3cfe431..0000000
+--- a/src/pages/Pipeline.tsx
++++ /dev/null
+@@ -1,64 +0,0 @@
+-import { useCallback, useEffect, useRef, useState } from "react";
+-import { supabase } from "../lib/supabase";
+-
+-interface Pipe { id: string; name: string; is_default: boolean }
+-interface Stage { id: string; pipeline_id: string; name: string; sort: number; probability: number; kind: "open" | "won" | "lost" }
+-interface Opp { id: string; title: string; amount: number; stage_id: string; companies: { name: string } | null }
+-interface Reason { id: string; name: string }
+-const bs = (v: number): string => "Bs " + Math.round(v).toLocaleString("es-BO");
+-
+-export default function Pipeline() {
+-  const [pipes, setPipes] = useState<Pipe[]>([]);
+-  const [pid, setPid] = useState("");
+-  const [stages, setStages] = useState<Stage[]>([]);
+-  const [opps, setOpps] = useState<Opp[]>([]);
+-  const [reasons, setReasons] = useState<Reason[]>([]);
+-  const [pend, setPend] = useState<{ opp: Opp; stage: Stage } | null>(null);
+-  const [reason, setReason] = useState("");
+-  const [err, setErr] = useState("");
+-  const drag = useRef<string | null>(null);
+-
+-  useEffect(() => {
+-    supabase.from("pipelines").select("id,name,is_default").eq("active", true).then(({ data }) => {
+-      const p = (data as Pipe[] | null) ?? []; setPipes(p); setPid((p.find((x) => x.is_default) ?? p[0])?.id ?? "");
+-    });
+-    supabase.from("loss_reasons").select("id,name").eq("active", true).then(({ data }) => setReasons((data as Reason[] | null) ?? []));
+-  }, []);
+-  const load = useCallback(async () => {
+-    if (!pid) return;
+-    const [s, o] = await Promise.all([
+-      supabase.from("pipeline_stages").select("*").eq("pipeline_id", pid).order("sort"),
+-      supabase.from("opportunities").select("id,title,amount,stage_id,companies(name)").eq("pipeline_id", pid).order("created_at", { ascending: false })]);
+-    if (s.error || o.error) { setErr((s.error ?? o.error)?.message ?? "Error"); return; }
+-    setErr(""); setStages((s.data as Stage[] | null) ?? []); setOpps((o.data as unknown as Opp[] | null) ?? []);
+-  }, [pid]);
+-  useEffect(() => { void load(); }, [load]);
+-
+-  const apply = async (o: Opp, stage: Stage, lossReason?: string) => {
+-    const { error } = await supabase.from("opportunities").update({ stage_id: stage.id, loss_reason_id: lossReason ?? null }).eq("id", o.id);
+-    setErr(error ? error.message : ""); void load();
+-  };
+-  const move = (o: Opp, stageId: string) => {
+-    const stage = stages.find((s) => s.id === stageId);
+-    if (!stage || stage.id === o.stage_id) return;
+-    if (stage.kind === "lost") { setPend({ opp: o, stage }); setReason(""); } else void apply(o, stage);
+-  };
+-
+-  return (<>
+-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}><h1>Pipeline comercial</h1>
+-      {pipes.length > 1 && <select className="in" style={{ maxWidth: 220 }} aria-label="Pipeline" value={pid} onChange={(e) => setPid(e.target.value)}>{pipes.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>}</div>
+-    <p className="note">Arrastra una tarjeta o usa el selector «Mover a». Al pasar a una etapa perdida se pide el motivo.</p>
+-    {err && <p className="err" role="alert">{err} <button className="btn" onClick={() => void load()}>Reintentar</button></p>}
+-    <div className="cols" style={{ gridTemplateColumns: `repeat(${Math.max(stages.length, 1)},minmax(210px,1fr))` }}>
+-      {stages.map((s) => { const cs = opps.filter((o) => o.stage_id === s.id); const tot = cs.reduce((a, o) => a + Number(o.amount), 0);
+-        return <section key={s.id} className="col" aria-label={s.name} onDragOver={(e) => e.preventDefault()} onDrop={() => { const o = opps.find((x) => x.id === drag.current); if (o) move(o, s.id); }}>
+-          <b>{s.name}</b><div className="note">{cs.length} · {bs(tot)} · ponderado {bs((tot * s.probability) / 100)} ({s.probability} %)</div>
+-          {cs.map((o) => <div key={o.id} className="opp" draggable onDragStart={() => { drag.current = o.id; }}><b>{o.title}</b><div className="note">{o.companies?.name ?? "—"}</div><div className="mono">{bs(Number(o.amount))}</div>
+-            <select className="in" style={{ marginTop: 6, height: 28 }} aria-label={`Mover ${o.title} a`} value={o.stage_id} onChange={(e) => move(o, e.target.value)}>{stages.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}</select></div>)}
+-          {!cs.length && <p className="note">Sin oportunidades en esta etapa.</p>}</section>; })}</div>
+-    {pend && <div className="modal" role="dialog" aria-modal="true" aria-label="Motivo de pérdida"><div className="card" style={{ width: 340 }}>
+-      <h2>Motivo de pérdida</h2><select className="in" aria-label="Motivo" value={reason} onChange={(e) => setReason(e.target.value)}><option value="">Elige un motivo…</option>{reasons.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}</select>
+-      <p className="note">{reason ? "Quedará registrado en el historial." : "Elige un motivo para poder confirmar."}</p>
+-      <div style={{ display: "flex", gap: 8 }}><button className="btn d" disabled={!reason} onClick={() => { void apply(pend.opp, pend.stage, reason); setPend(null); }}>Confirmar pérdida</button><button className="btn" onClick={() => setPend(null)}>Cancelar</button></div></div></div>}
+-  </>);
+-}
+diff --git a/src/pages/Reasignacion.tsx b/src/pages/Reasignacion.tsx
+deleted file mode 100644
+index 584fdb3..0000000
+--- a/src/pages/Reasignacion.tsx
++++ /dev/null
+@@ -1,42 +0,0 @@
+-import { useCallback, useEffect, useState } from "react";
+-import { supabase } from "../lib/supabase";
+-
+-interface Opp { id: string; title: string; owner_id: string | null; last_activity_at: string | null; pipeline_stages: { name: string } | null }
+-interface Opt { id: string; name: string }
+-interface Log { id: string; opportunity_id: string; from_owner: string | null; to_owner: string | null; reassigned_at: string }
+-
+-export default function Reasignacion() {
+-  const [opps, setOpps] = useState<Opp[]>([]);
+-  const [users, setUsers] = useState<Opt[]>([]);
+-  const [log, setLog] = useState<Log[]>([]);
+-  const [titles, setTitles] = useState<Record<string, string>>({});
+-  const [err, setErr] = useState("");
+-  const [msg, setMsg] = useState("");
+-  const name = (id: string | null): string => users.find((u) => u.id === id)?.name ?? "Sin asignar";
+-  const load = useCallback(async () => {
+-    const [o, l] = await Promise.all([
+-      supabase.from("opportunities").select("id,title,owner_id,last_activity_at,pipeline_stages(name)").eq("status", "open").order("last_activity_at", { ascending: true, nullsFirst: true }).limit(200),
+-      supabase.from("lead_reassignments").select("*").order("reassigned_at", { ascending: false }).limit(20)]);
+-    if (o.error) { setErr(o.error.message); return; }
+-    const os = (o.data as unknown as Opp[] | null) ?? []; const ls = (l.data as Log[] | null) ?? [];
+-    setOpps(os); setLog(ls); setErr("");
+-    const ids = ls.map((x) => x.opportunity_id).filter((i) => !os.some((p) => p.id === i));
+-    if (ids.length) { const { data } = await supabase.from("opportunities").select("id,title").in("id", ids); setTitles(Object.fromEntries(((data as { id: string; title: string }[] | null) ?? []).map((x) => [x.id, x.title]))); }
+-  }, []);
+-  useEffect(() => { void load(); supabase.from("profiles").select("id,full_name").eq("active", true).order("full_name").then(({ data }) => setUsers(((data as { id: string; full_name: string }[] | null) ?? []).map((p) => ({ id: p.id, name: p.full_name })))); }, [load]);
+-  const move = async (o: Opp, to: string) => {
+-    if (!to) return;
+-    const { error } = await supabase.rpc("reassign_lead", { p_opp: o.id, p_new_owner: to });
+-    setErr(error?.message ?? ""); setMsg(error ? "" : `✓ «${o.title}» pasó a ${name(to)}. Quedó registrado y se notificó.`); void load();
+-  };
+-  const ago = (s: string | null): string => (s ? Math.floor((Date.now() - new Date(s).getTime()) / 36e5) + " h" : "—");
+-  return (<>
+-    <h1>Reasignación de leads</h1><p className="note">Solo oportunidades abiertas. Cada cambio guarda el responsable anterior y el nuevo, y avisa al nuevo responsable.</p>
+-    {err && <p className="err" role="alert">{err}</p>}{msg && <p role="status">{msg}</p>}
+-    <div className="card"><table><thead><tr><th>Oportunidad</th><th>Etapa</th><th>Sin actividad</th><th>Responsable</th></tr></thead><tbody>
+-      {opps.map((o) => <tr key={o.id}><td>{o.title}</td><td>{o.pipeline_stages?.name}</td><td className="mono">{ago(o.last_activity_at)}</td>
+-        <td><select className="in" style={{ maxWidth: 220 }} aria-label={`Responsable de ${o.title}`} value={o.owner_id ?? ""} onChange={(e) => void move(o, e.target.value)}><option value="">Sin asignar</option>{users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}</select></td></tr>)}</tbody></table>
+-      {!opps.length && <p className="note">No hay oportunidades abiertas.</p>}</div>
+-    <div className="card"><h2>Últimas reasignaciones</h2>{log.map((l) => <div key={l.id}><span className="mono">{l.reassigned_at.slice(0, 10)}</span> {opps.find((o) => o.id === l.opportunity_id)?.title ?? titles[l.opportunity_id] ?? "Oportunidad"}: {name(l.from_owner)} → {name(l.to_owner)}</div>)}{!log.length && <p className="note">Aún no hay reasignaciones.</p>}</div>
+-  </>);
+-}
+diff --git a/src/pages/Reportes.tsx b/src/pages/Reportes.tsx
+index c108c1d..9a646c6 100644
+--- a/src/pages/Reportes.tsx
++++ b/src/pages/Reportes.tsx
+@@ -1,9 +1,10 @@
+ import { useEffect, useState } from "react";
+-import { Download } from "lucide-react";
++import { Download, FileSpreadsheet } from "lucide-react";
++import * as XLSX from "xlsx";
+ import { supabase } from "../lib/supabase";
+ 
+ interface Tbl { head: string[]; rows: (string | number)[][]; note?: string }
+-const TABS = ["Conversión", "Ventas", "Pérdidas", "Forecast", "Negociación", "Operativos"] as const;
++const TABS = ["Conversión", "Ventas", "Negociación", "Operativos"] as const;
+ type Tab = (typeof TABS)[number];
+ const day = (d: Date): string => d.toLocaleDateString("en-CA", { timeZone: "America/La_Paz" });
+ const bs = (v: number): string => "Bs " + v.toLocaleString("es-BO", { maximumFractionDigits: 2 });
+@@ -29,19 +30,6 @@ async function build(tab: Tab, from: string, to: string): Promise<Tbl> {
+     const by = (f: (x: (typeof w)[number]) => string): (string | number)[][] => { const m: Record<string, number[]> = {}; w.forEach((x) => { (m[f(x)] ??= []).push(Number(x.amount)); }); return Object.entries(m).map(([k, v]) => [k, v.length, bs(sum(v))]); };
+     return { head: ["Concepto", "Ventas", "Total"], rows: [["TOTAL del periodo", w.length, bs(tot)], ["Ticket promedio", "", w.length ? bs(tot / w.length) : "—"], ["Ciclo comercial promedio", "", w.length ? cyc.toFixed(1) + " días" : "—"], ...by((x) => "Vendedor: " + (x.profiles?.full_name ?? "Sin asignar")), ...by((x) => "Origen: " + (x.lead_sources?.name ?? "—"))] };
+   }
+-  if (tab === "Pérdidas") {
+-    const { data, error } = await supabase.from("v_loss_summary").select("*");
+-    if (error) return fail(error.message);
+-    return { head: ["Motivo", "Oportunidades", "Monto"], rows: ((data as { reason: string; opportunities: number; amount: number }[]) ?? []).map((r) => [r.reason, r.opportunities, bs(Number(r.amount))]) };
+-  }
+-  if (tab === "Forecast") {
+-    const m = to.slice(0, 7) + "-01";
+-    const [k, g] = await Promise.all([supabase.rpc("dashboard_kpis", { p_from: m, p_to: to, p_owner: null, p_source: null, p_pipeline: null, p_company: null, p_plant: null }), supabase.from("goals").select("target").eq("month", m).is("user_id", null).maybeSingle()]);
+-    if (k.error) return fail(k.error.message);
+-    const x = k.data as { sales_period: number; weighted_value: number };
+-    const goal = Number((g.data as { target: number } | null)?.target ?? 0);
+-    return { head: ["Concepto", "Monto"], rows: [["Comprometido (ventas ganadas del mes)", bs(x.sales_period)], ["Probable (valor ponderado de abiertas)", bs(x.weighted_value)], ["Total", bs(x.sales_period + x.weighted_value)], ["Meta del mes", goal ? bs(goal) : "Sin meta cargada"]], note: "Probable = monto × probabilidad de las oportunidades abiertas." };
+-  }
+   if (tab === "Negociación") {
+     const { data, error } = await supabase.from("negotiation_history").select("old_amount,new_amount").gte("created_at", from).lte("created_at", to + "T23:59:59");
+     if (error) return fail(error.message);
+@@ -56,6 +44,32 @@ async function build(tab: Tab, from: string, to: string): Promise<Tbl> {
+   return { head: ["Indicador", "Valor"], rows: [["Órdenes solicitadas", cnt("solicitada")], ["Órdenes programadas", cnt("programada")], ["En ejecución", cnt("en_ejecucion")], ["Terminadas", cnt("terminada")], ["Monto acordado", bs(sum(os.map((x) => Number(x.agreed_amount))))], ["Monto recibido", bs(sum(os.map((x) => Number(x.received_amount))))], ["Saldo por cobrar", bs(sum(os.map((x) => Number(x.balance))))], ["Litros recibidos (periodo)", lt(Number(vol?.received ?? 0))], ["Litros entregados (periodo)", lt(Number(vol?.delivered ?? 0))], ["Certificados (periodo)", vol?.certificates ?? 0]], note: "Control interno: no hay conexión bancaria." };
+ }
+ 
++interface CertX {
++  number: string; cert_date: string; status: string; operation: string; product: string | null; tank_no: string | null; ticket_no: string | null; storage_lot: string | null;
++  from_dispatcher: string | null; to_receiver: string | null; from_delivery_point: string | null; to_reception_point: string | null;
++  total_volume: number | null; remito_volume: number | null; driver: string | null; driver_id_card: string | null; plate: string | null; transport_company: string | null;
++  observations: string | null; sig_inspector_name: string | null; void_reason: string | null; created_at: string;
++  companies: { name: string } | null; plants: { name: string } | null;
++  certificate_measurements: { kind: string; gsv: number | null }[]; certificate_seals: { seal_no: string; sort: number }[];
++}
++async function exportCertificates(from: string, to: string): Promise<number> {
++  const { data, error } = await supabase.from("certificates").select("*, companies(name), plants(name), certificate_measurements(kind,gsv), certificate_seals(seal_no,sort)").gte("cert_date", from).lte("cert_date", to).order("cert_date").order("number");
++  if (error) throw new Error(error.message);
++  const rows = ((data as unknown as CertX[] | null) ?? []).map((c) => ({
++    "N°": c.number, "Fecha": c.cert_date, "Estado": c.status === "emitido" ? "Emitido" : "Anulado", "Operación": c.operation === "recepcion" ? "Recepción" : "Entrega",
++    "Cliente": c.companies?.name ?? "", "Planta": c.plants?.name ?? "", "Producto": c.product ?? "", "Expedido": c.from_dispatcher ?? "", "Receptor": c.to_receiver ?? "",
++    "Planta de carga": c.from_delivery_point ?? "", "Planta de descarga": c.to_reception_point ?? "", "Lote almacenaje": c.storage_lot ?? "", "Tanque": c.tank_no ?? "", "Ticket inspector": c.ticket_no ?? "",
++    "Inspector": c.sig_inspector_name ?? "", "Placa": c.plate ?? "", "Conductor": c.driver ?? "", "Carnet": c.driver_id_card ?? "", "Empresa de transporte": c.transport_company ?? "",
++    "Volumen inicial (L)": c.certificate_measurements.find((m) => m.kind === "inicial")?.gsv ?? "", "Volumen final (L)": c.certificate_measurements.find((m) => m.kind === "final")?.gsv ?? "",
++    "Volumen total (L)": c.total_volume ?? "", "Volumen remito (L)": c.remito_volume ?? "",
++    "Precintos": [...c.certificate_seals].sort((a, b) => a.sort - b.sort).map((x) => x.seal_no).join(", "),
++    "Observaciones": c.observations ?? "", "Motivo de anulación": c.void_reason ?? "", "Registrado": c.created_at.slice(0, 16).replace("T", " "),
++  }));
++  const ws = XLSX.utils.json_to_sheet(rows); const wb = XLSX.utils.book_new();
++  XLSX.utils.book_append_sheet(wb, ws, "Certificados"); XLSX.writeFile(wb, `certificados_${from}_a_${to}.xlsx`);
++  return rows.length;
++}
++
+ export default function Reportes() {
+   const now = new Date();
+   const [tab, setTab] = useState<Tab>("Conversión");
+@@ -64,6 +78,7 @@ export default function Reportes() {
+   const [t, setT] = useState<Tbl | null>(null);
+   const [err, setErr] = useState("");
+   const [tick, setTick] = useState(0);
++  const [xmsg, setXmsg] = useState("");
+   useEffect(() => { setT(null); setErr(""); build(tab, from, to).then(setT).catch((e: unknown) => setErr(e instanceof Error ? e.message : "Error")); }, [tab, from, to, tick]);
+   const csv = () => {
+     if (!t) return;
+@@ -72,9 +87,11 @@ export default function Reportes() {
+     a.href = URL.createObjectURL(new Blob(["\ufeff" + [t.head, ...t.rows].map((r) => r.map(q).join(",")).join("\n")], { type: "text/csv;charset=utf-8" }));
+     a.download = `reporte-${tab.toLowerCase()}.csv`; a.click();
+   };
++  const xls = () => { setXmsg("Generando…"); exportCertificates(from, to).then((n) => setXmsg(n ? `✓ ${n} certificados exportados` : "No hay certificados en esas fechas")).catch((e: unknown) => setXmsg(e instanceof Error ? e.message : "Error al exportar")); };
+   return (<>
+     <div style={{ display: "flex", justifyContent: "space-between" }}><h1>Reportes</h1><button className="btn" onClick={csv} disabled={!t}><Download size={14} /> Exportar CSV</button></div>
+-    <div className="card" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}><input className="in" style={{ width: 150 }} type="date" aria-label="Desde" value={from} onChange={(e) => setFrom(e.target.value)} /><input className="in" style={{ width: 150 }} type="date" aria-label="Hasta" value={to} onChange={(e) => setTo(e.target.value)} /></div>
++    <div className="card" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}><input className="in" style={{ width: 150 }} type="date" aria-label="Desde" value={from} onChange={(e) => setFrom(e.target.value)} /><input className="in" style={{ width: 150 }} type="date" aria-label="Hasta" value={to} onChange={(e) => setTo(e.target.value)} />
++      {tab === "Operativos" && <><button className="btn p" onClick={xls}><FileSpreadsheet size={14} /> Descargar certificados (Excel)</button><span className="note">{xmsg}</span></>}</div>
+     <div className="tabs" role="tablist">{TABS.map((x) => <button key={x} role="tab" aria-selected={tab === x} onClick={() => setTab(x)}>{x}</button>)}</div>
+     <div className="card">{err && <p className="err" role="alert">{err} <button className="btn" onClick={() => setTick(tick + 1)}>Reintentar</button></p>}
+       {!t && !err && <p className="note">Cargando…</p>}
+diff --git a/src/pages/Volumenes.tsx b/src/pages/Volumenes.tsx
+index ae46b41..cec6393 100644
+--- a/src/pages/Volumenes.tsx
++++ b/src/pages/Volumenes.tsx
+@@ -1,28 +1,61 @@
+ import { useEffect, useState } from "react";
+ import { supabase } from "../lib/supabase";
+ 
+-interface V { plant: string; received_today: number; delivered_today: number; received_yesterday: number; delivered_yesterday: number }
+-interface C { id: string; number: string; operation: string; plate: string | null; total_volume: number | null; created_at: string }
++interface Row { label: string; received: number; delivered: number; certificates: number }
++interface C { id: string; number: string; operation: string; plate: string | null; total_volume: number | null; cert_date: string }
++interface Opt { id: string; name: string }
++interface Plant extends Opt { company_id: string }
+ const lt = (v: number): string => Math.round(v).toLocaleString("es-BO") + " L";
+-const dl = (a: number, b: number): string => (b === 0 ? (a > 0 ? "▲ nuevo vs ayer" : "○ sin cambio") : `${a >= b ? "▲" : "▼"} ${Math.abs(Math.round(((a - b) / b) * 100))} % vs ayer`);
++const today = (): string => new Date().toLocaleDateString("en-CA", { timeZone: "America/La_Paz" });
+ 
+ export default function Volumenes() {
+-  const [v, setV] = useState<V[]>([]); const [c, setC] = useState<C[]>([]); const [err, setErr] = useState(""); const [at, setAt] = useState("");
++  const [companies, setCompanies] = useState<Opt[]>([]);
++  const [plants, setPlants] = useState<Plant[]>([]);
++  const [company, setCompany] = useState("");
++  const [plant, setPlant] = useState("");
++  const [from, setFrom] = useState(today());
++  const [to, setTo] = useState(today());
++  const [rows, setRows] = useState<Row[]>([]);
++  const [c, setC] = useState<C[]>([]);
++  const [err, setErr] = useState("");
++  const [at, setAt] = useState("");
++
++  useEffect(() => {
++    supabase.from("companies").select("id,name").eq("active", true).order("name").then(({ data }) => setCompanies((data as Opt[] | null) ?? []));
++    supabase.from("plants").select("id,name,company_id").eq("active", true).order("name").then(({ data }) => setPlants((data as Plant[] | null) ?? []));
++  }, []);
++
+   useEffect(() => {
+     const load = () => {
+-      supabase.from("v_volumes_today").select("*").then(({ data, error }) => { if (error) setErr(error.message); else { setErr(""); setV((data as V[] | null) ?? []); setAt(new Date().toLocaleTimeString("es-BO", { timeZone: "America/La_Paz" })); } });
+-      supabase.from("certificates").select("id,number,operation,plate,total_volume,created_at").eq("status", "emitido").order("created_at", { ascending: false }).limit(6).then(({ data }) => setC((data as C[] | null) ?? []));
++      const f = from || "2000-01-01"; const t = to || "2100-12-31";
++      supabase.rpc("volumes_summary", { p_group: "plant", p_from: f, p_to: t, p_company: company || null, p_plant: plant || null }).then(({ data, error }) => {
++        if (error) setErr(error.message); else { setErr(""); setRows((data as Row[] | null) ?? []); setAt(new Date().toLocaleTimeString("es-BO", { timeZone: "America/La_Paz" })); }
++      });
++      let q = supabase.from("certificates").select("id,number,operation,plate,total_volume,cert_date").eq("status", "emitido").gte("cert_date", f).lte("cert_date", t).order("created_at", { ascending: false }).limit(8);
++      if (company) q = q.eq("company_id", company);
++      if (plant) q = q.eq("plant_id", plant);
++      q.then(({ data }) => setC((data as C[] | null) ?? []));
+     };
+-    load(); const t = setInterval(load, 30000); return () => clearInterval(t);
+-  }, []);
+-  const s = (k: keyof V) => v.reduce((a, r) => a + Number(r[k]), 0);
++    load(); const i = setInterval(load, 30000); return () => clearInterval(i);
++  }, [company, plant, from, to]);
++
++  const sum = (k: "received" | "delivered"): number => rows.reduce((a, r) => a + Number(r[k]), 0);
++  const general = !company && !plant && !from && !to;
+   return (<>
+-    <h1>Volúmenes en vivo</h1><p className="note">Se actualiza cada 30 s{at ? ` · última: ${at}` : ""}. Solo certificados emitidos.</p>
++    <h1>Volúmenes en vivo</h1>
++    <p className="note">Se actualiza cada 30 s{at ? ` · última: ${at}` : ""}. Solo certificados emitidos.</p>
++    <div className="card" style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
++      <select className="in" style={{ maxWidth: 220 }} aria-label="Empresa" value={company} onChange={(e) => { setCompany(e.target.value); setPlant(""); }}><option value="">Todas las empresas</option>{companies.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}</select>
++      <select className="in" style={{ maxWidth: 220 }} aria-label="Planta" value={plant} onChange={(e) => setPlant(e.target.value)}><option value="">Todas las plantas</option>{plants.filter((p) => !company || p.company_id === company).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
++      <input className="in" style={{ width: 150 }} type="date" aria-label="Desde" value={from} onChange={(e) => setFrom(e.target.value)} />
++      <input className="in" style={{ width: 150 }} type="date" aria-label="Hasta" value={to} onChange={(e) => setTo(e.target.value)} />
++      <button className="btn" onClick={() => { setFrom(today()); setTo(today()); setCompany(""); setPlant(""); }}>Hoy</button>
++      <button className="btn" onClick={() => { setFrom(""); setTo(""); setCompany(""); setPlant(""); }}>General (todos)</button></div>
+     {err && <p className="err" role="alert">{err}</p>}
+     <div className="grid" style={{ gridTemplateColumns: "1fr 1fr" }}>
+-      <div className="card kpi"><span>Recibidos hoy</span><b style={{ fontSize: 40 }}>{lt(s("received_today"))}</b><span>{dl(s("received_today"), s("received_yesterday"))}</span></div>
+-      <div className="card kpi"><span>Entregados hoy</span><b style={{ fontSize: 40 }}>{lt(s("delivered_today"))}</b><span>{dl(s("delivered_today"), s("delivered_yesterday"))}</span></div></div>
+-    <div className="card"><h2>Por planta</h2><table><thead><tr><th>Planta</th><th className="n">Recibidos</th><th className="n">Entregados</th></tr></thead><tbody>{v.map((r) => <tr key={r.plant}><td>{r.plant}</td><td className="n mono">{lt(Number(r.received_today))}</td><td className="n mono">{lt(Number(r.delivered_today))}</td></tr>)}</tbody></table>{!v.length && <p className="note">Aún no hay certificados de hoy ni de ayer.</p>}</div>
+-    <div className="card"><h2>Últimos certificados</h2>{c.map((x) => <div key={x.id}><span className="mono">{x.number}</span> · {x.operation === "recepcion" ? "Recepción" : "Entrega"} · {x.plate} · {lt(Number(x.total_volume ?? 0))}</div>)}</div>
++      <div className="card kpi"><span>Recibidos</span><b style={{ fontSize: 40 }}>{lt(sum("received"))}</b><span>{general ? "Todos los registros" : `${from || "inicio"} → ${to || "hoy"}`}</span></div>
++      <div className="card kpi"><span>Entregados</span><b style={{ fontSize: 40 }}>{lt(sum("delivered"))}</b><span>{general ? "Todos los registros" : `${from || "inicio"} → ${to || "hoy"}`}</span></div></div>
++    <div className="card"><h2>Por planta</h2><table><thead><tr><th>Planta</th><th className="n">Certificados</th><th className="n">Recibidos</th><th className="n">Entregados</th></tr></thead><tbody>{rows.map((r) => <tr key={r.label}><td>{r.label}</td><td className="n mono">{r.certificates}</td><td className="n mono">{lt(Number(r.received))}</td><td className="n mono">{lt(Number(r.delivered))}</td></tr>)}</tbody></table>{!rows.length && <p className="note">No hay certificados con este filtro.</p>}</div>
++    <div className="card"><h2>Últimos certificados del filtro</h2>{c.map((x) => <div key={x.id}><span className="mono">{x.number}</span> · {x.cert_date} · {x.operation === "recepcion" ? "Recepción" : "Entrega"} · {x.plate} · {lt(Number(x.total_volume ?? 0))}</div>)}{!c.length && <p className="note">Sin certificados.</p>}</div>
+   </>);
+ }
+diff --git a/supabase/04_observaciones_v1.sql b/supabase/04_observaciones_v1.sql
+new file mode 100644
+index 0000000..fa36964
+--- /dev/null
++++ b/supabase/04_observaciones_v1.sql
+@@ -0,0 +1,66 @@
++-- =====================================================================
++-- 04 · Observaciones de la Versión 1
++-- Ejecutar UNA vez en Supabase → SQL Editor → Run
++-- =====================================================================
++
++-- 1) Cisternas (placa, conductor, carnet, empresa de transporte)
++create table if not exists vehicles (
++  id uuid primary key default gen_random_uuid(),
++  plate text not null,
++  driver_name text not null,
++  driver_id_card text not null,
++  transport_company text not null,
++  active boolean not null default true,
++  created_at timestamptz not null default now()
++);
++create unique index if not exists vehicles_plate_uq on vehicles (upper(trim(plate)));
++alter table vehicles enable row level security;
++drop policy if exists vehicles_select on vehicles;
++drop policy if exists vehicles_insert on vehicles;
++drop policy if exists vehicles_update on vehicles;
++create policy vehicles_select on vehicles for select to authenticated using (public.is_active_user());
++create policy vehicles_insert on vehicles for insert to authenticated with check (public.has_role(array['admin']));
++create policy vehicles_update on vehicles for update to authenticated
++  using (public.has_role(array['admin'])) with check (public.has_role(array['admin']));
++
++-- 2) Lote de almacenaje en certificados (modelo Fénix)
++alter table certificates add column if not exists storage_lot text;
++
++-- 3) save_certificate con lote de almacenaje
++create or replace function save_certificate(p jsonb) returns certificates
++language plpgsql security definer set search_path = public as $$
++declare c certificates; m jsonb; s text; i int := 0;
++begin
++  if not has_role(array['admin','sup_operativo','inspector']) then
++    raise exception 'Sin permiso para registrar certificados'; end if;
++  insert into certificates(operation, cert_date, measurement_type, company_id, plant_id, service_order_id,
++      product, tank_no, ticket_no, storage_lot, from_dispatcher, from_delivery_point, to_receiver, to_reception_point,
++      remito_volume, difference, driver, driver_id_card, plate, transport_company, observations,
++      sig_inspector_name, sig_inspector_path, sig_carrier_name, sig_carrier_path, sig_storage_name, sig_storage_path)
++  values (p->>'operation', (p->>'cert_date')::date, p->>'measurement_type',
++      nullif(p->>'company_id','')::uuid, nullif(p->>'plant_id','')::uuid, nullif(p->>'service_order_id','')::uuid,
++      p->>'product', p->>'tank_no', p->>'ticket_no', p->>'storage_lot', p->>'from_dispatcher', p->>'from_delivery_point',
++      p->>'to_receiver', p->>'to_reception_point',
++      nullif(p->>'remito_volume','')::numeric, null,
++      p->>'driver', p->>'driver_id_card', p->>'plate', p->>'transport_company', p->>'observations',
++      p->>'sig_inspector_name', p->>'sig_inspector_path', p->>'sig_carrier_name', p->>'sig_carrier_path',
++      p->>'sig_storage_name', p->>'sig_storage_path')
++  returning * into c;
++  for m in select * from jsonb_array_elements(coalesce(p->'measurements', '[]'::jsonb)) loop
++    insert into certificate_measurements(certificate_id, kind, measured_date, measured_time, product_level, water_level,
++        api_gravity, temp_f, avg_temp_f, api_60f, tov, free_water, vcf, gsv)
++    values (c.id, m->>'kind', nullif(m->>'measured_date','')::date, nullif(m->>'measured_time','')::time,
++        nullif(m->>'product_level','')::numeric, nullif(m->>'water_level','')::numeric,
++        nullif(m->>'api_gravity','')::numeric, nullif(m->>'temp_f','')::numeric, nullif(m->>'avg_temp_f','')::numeric,
++        nullif(m->>'api_60f','')::numeric, nullif(m->>'tov','')::numeric, nullif(m->>'free_water','')::numeric,
++        nullif(m->>'vcf','')::numeric, nullif(m->>'gsv','')::numeric);
++  end loop;
++  for s in select jsonb_array_elements_text(coalesce(p->'seals', '[]'::jsonb)) loop
++    if length(trim(s)) > 0 then
++      i := i + 1;
++      insert into certificate_seals(certificate_id, seal_no, sort) values (c.id, trim(s), i);
++    end if;
++  end loop;
++  select * into c from certificates where id = c.id;
++  return c;
++end $$;

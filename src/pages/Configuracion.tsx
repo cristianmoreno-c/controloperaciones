@@ -4,7 +4,7 @@ import { supabase } from "../lib/supabase";
 interface Item { id: string; name: string; active: boolean }
 interface Plant { id: string; company_id: string; name: string; location: string | null; active: boolean }
 interface Svc extends Item { default_price: number; unit_id: string | null }
-const TABS = ["Empresa", "Metas", "Pipeline", "Automatizaciones", "Campos personalizados", "Orígenes de leads", "Servicios", "Productos", "Motivos de pérdida"] as const;
+const TABS = ["Empresa", "Metas", "Pipeline", "Automatizaciones", "Campos personalizados", "Orígenes de leads", "Servicios", "Productos", "Cisternas", "Motivos de pérdida"] as const;
 type Tab = (typeof TABS)[number];
 
 function Simple({ table }: { table: "lead_sources" | "loss_reasons" | "products" }) {
@@ -146,9 +146,39 @@ function Campos() {
     <table><tbody>{rows.map((r) => <tr key={r.id}><td>{r.entity === "contact" ? "Contactos" : "Oportunidades"}</td><td>{r.name}{r.required ? " *" : ""}</td><td>{r.field_type}</td><td>{r.active ? "✓ Activo" : "○ Inactivo"}</td><td className="n"><button className="btn" onClick={() => void tog(r)}>{r.active ? "Desactivar" : "Reactivar"}</button></td></tr>)}</tbody></table></div>;
 }
 
+interface Veh { id: string; plate: string; driver_name: string; driver_id_card: string; transport_company: string; active: boolean }
+function Cisternas() {
+  const [rows, setRows] = useState<Veh[]>([]);
+  const [n, setN] = useState({ plate: "", driver: "", ci: "", company: "" });
+  const [err, setErr] = useState("");
+  const load = useCallback(async () => { const { data, error } = await supabase.from("vehicles").select("*").order("plate"); if (error) setErr(error.message); else setRows((data as Veh[] | null) ?? []); }, []);
+  useEffect(() => { void load(); }, [load]);
+  const add = async (e: FormEvent) => {
+    e.preventDefault();
+    const { error } = await supabase.from("vehicles").insert({ plate: n.plate.trim().toUpperCase(), driver_name: n.driver.trim(), driver_id_card: n.ci.trim(), transport_company: n.company.trim() });
+    setErr(error ? (error.message.includes("duplicate") ? "Esa placa ya está registrada." : error.message) : ""); if (!error) setN({ plate: "", driver: "", ci: "", company: "" }); void load();
+  };
+  const upd = async (r: Veh, patch: Partial<Veh>) => { const { error } = await supabase.from("vehicles").update(patch).eq("id", r.id); setErr(error?.message ?? ""); void load(); };
+  return <div className="card"><p className="note">Registra aquí cada cisterna. Al hacer un certificado se busca por placa y se llenan conductor, carnet y empresa.</p>
+    <form onSubmit={(e) => void add(e)} style={{ display: "flex", gap: 8, flexWrap: "wrap", margin: "8px 0" }}>
+      <input className="in mono" style={{ maxWidth: 120 }} required placeholder="Placa" aria-label="Placa" value={n.plate} onChange={(e) => setN({ ...n, plate: e.target.value })} />
+      <input className="in" style={{ maxWidth: 200 }} required placeholder="Nombre del conductor" aria-label="Conductor" value={n.driver} onChange={(e) => setN({ ...n, driver: e.target.value })} />
+      <input className="in" style={{ maxWidth: 140 }} required placeholder="Carnet de identidad" aria-label="Carnet de identidad" value={n.ci} onChange={(e) => setN({ ...n, ci: e.target.value })} />
+      <input className="in" style={{ maxWidth: 200 }} required placeholder="Empresa de transporte" aria-label="Empresa de transporte" value={n.company} onChange={(e) => setN({ ...n, company: e.target.value })} />
+      <button className="btn p">Agregar cisterna</button></form>
+    {err && <p className="err" role="alert">{err}</p>}
+    <table><thead><tr><th>Placa</th><th>Conductor</th><th>Carnet</th><th>Empresa de transporte</th><th>Estado</th><th /></tr></thead><tbody>{rows.map((r) => <tr key={r.id}>
+      <td className="mono">{r.plate}</td>
+      <td><input className="in" aria-label={`Conductor ${r.plate}`} defaultValue={r.driver_name} onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== r.driver_name) void upd(r, { driver_name: v }); }} /></td>
+      <td><input className="in" aria-label={`Carnet ${r.plate}`} defaultValue={r.driver_id_card} onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== r.driver_id_card) void upd(r, { driver_id_card: v }); }} /></td>
+      <td><input className="in" aria-label={`Empresa ${r.plate}`} defaultValue={r.transport_company} onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== r.transport_company) void upd(r, { transport_company: v }); }} /></td>
+      <td>{r.active ? "✓ Activa" : "○ Inactiva"}</td><td className="n"><button className="btn" onClick={() => void upd(r, { active: !r.active })}>{r.active ? "Desactivar" : "Reactivar"}</button></td></tr>)}</tbody></table>
+    {!rows.length && <p className="note">Aún no hay cisternas registradas.</p>}</div>;
+}
+
 export default function Configuracion() {
   const [tab, setTab] = useState<Tab>("Empresa");
   return <><h1>Configuración</h1>
     <div className="tabs" role="tablist">{TABS.map((t) => <button key={t} role="tab" aria-selected={tab === t} onClick={() => setTab(t)}>{t}</button>)}</div>
-    {tab === "Empresa" && <Empresa />}{tab === "Metas" && <Metas />}{tab === "Pipeline" && <PipelineCfg />}{tab === "Automatizaciones" && <Automatizaciones />}{tab === "Campos personalizados" && <Campos />}{tab === "Productos" && <Simple table="products" />}{tab === "Orígenes de leads" && <Simple table="lead_sources" />}{tab === "Servicios" && <Servicios />}{tab === "Motivos de pérdida" && <Simple table="loss_reasons" />}</>;
+    {tab === "Empresa" && <Empresa />}{tab === "Metas" && <Metas />}{tab === "Pipeline" && <PipelineCfg />}{tab === "Automatizaciones" && <Automatizaciones />}{tab === "Campos personalizados" && <Campos />}{tab === "Productos" && <Simple table="products" />}{tab === "Orígenes de leads" && <Simple table="lead_sources" />}{tab === "Servicios" && <Servicios />}{tab === "Cisternas" && <Cisternas />}{tab === "Motivos de pérdida" && <Simple table="loss_reasons" />}</>;
 }
