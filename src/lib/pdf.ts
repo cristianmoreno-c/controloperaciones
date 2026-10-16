@@ -3,7 +3,7 @@ import { supabase } from "./supabase";
 
 interface Meas { kind: "inicial" | "final"; measured_date: string | null; measured_time: string | null; product_level: number | null; water_level: number | null; api_gravity: number | null; temp_f: number | null; avg_temp_f: number | null; api_60f: number | null; tov: number | null; free_water: number | null; vcf: number | null; gsv: number | null }
 interface Full {
-  number: string; operation: "recepcion" | "entrega"; cert_date: string; measurement_type: string | null; product: string | null; tank_no: string | null; ticket_no: string | null;
+  number: string; operation: "recepcion" | "entrega"; cert_date: string; measurement_type: string | null; product: string | null; tank_no: string | null; ticket_no: string | null; storage_lot: string | null;
   from_dispatcher: string | null; from_delivery_point: string | null; to_receiver: string | null; to_reception_point: string | null;
   total_volume: number | null; remito_volume: number | null; difference: number | null;
   driver: string | null; driver_id_card: string | null; plate: string | null; transport_company: string | null; observations: string | null;
@@ -46,20 +46,16 @@ export async function downloadCertificatePdf(id: string): Promise<void> {
 
   // Tres bloques de dos casillas
   const bw = 5.0;
-  lv("FECHA", fd(c.cert_date), 0.5, 1.15, bw, 0.27, 0.9); lv("TIPO DE MEDICIÓN", c.measurement_type ?? "", 5.5, 1.15, bw, 0.27, 1.5);
+  lv("FECHA", fd(c.cert_date), 0.5, 1.15, bw, 0.27, 0.9); lv("LOTE ALMACENAJE", c.storage_lot ?? "", 5.5, 1.15, bw, 0.27, 1.5);
   lv("PRODUCTO", c.product ?? "", 0.5, 1.42, bw, 0.27, 0.9); lv("TANQUE #", c.tank_no ?? "", 5.5, 1.42, bw, 0.27, 1.5);
   lv("RECEPCIÓN", c.operation === "recepcion" ? "X" : "", 0.5, 1.69, bw, 0.27, 1.2); lv("ENTREGA", c.operation === "entrega" ? "X" : "", 5.5, 1.69, bw, 0.27, 1.2);
 
   // DE: / A:
   lv("DE: Expedido", c.from_dispatcher ?? "", 0.5, 2.02, bw, 0.27, 1.2); lv("A: Receptor", c.to_receiver ?? "", 5.5, 2.02, bw, 0.27, 1.2);
-  lv("Punto de entrega", c.from_delivery_point ?? "", 0.5, 2.29, bw, 0.27, 1.2); lv("Punto de Recepción", c.to_reception_point ?? "", 5.5, 2.29, bw, 0.27, 1.2);
+  lv("Planta de carga", c.from_delivery_point ?? "", 0.5, 2.29, bw, 0.27, 1.2); lv("Planta de descarga", c.to_reception_point ?? "", 5.5, 2.29, bw, 0.27, 1.2);
 
   // Tabla de mediciones
-  const cols: { w: number; t: string; g?: string }[] = [
-    { w: 0.75, t: "MEDICIÓN" }, { w: 0.75, t: "FECHA" }, { w: 0.55, t: "HORA" }, { w: 0.6, t: "Producto", g: "NIVEL" }, { w: 0.6, t: "Agua", g: "NIVEL" },
-    { w: 0.65, t: "Grav. API", g: "MUESTRA" }, { w: 0.65, t: "Temp. °F", g: "MUESTRA" }, { w: 0.8, t: "TEMP. PROMEDIO" },
-    { w: 1.0, t: "GRAVEDAD API A 60°F (Tabla 5B)" }, { w: 0.9, t: "VOLUMEN TOTAL OBSERVADO (TOV)" }, { w: 0.8, t: "AGUA LIBRE (FW)" },
-    { w: 0.8, t: "FACTOR DE CORRECCIÓN DE VOLUMEN (VCF, Tabla 6B)" }, { w: 1.15, t: "VOLUMEN BRUTO ESTÁNDAR A 60°F (GSV)" }];
+  const cols: { w: number; t: string; g?: string }[] = [{ w: 3.0, t: "MEDICIÓN" }, { w: 3.0, t: "VOLUMEN (Litros)" }];
   const wrap = (s: string, x: number, y: number, w: number, h: number) => {
     doc.setFont("helvetica", "bold"); doc.setFontSize(5.5);
     const lines = doc.splitTextToSize(s, w - 0.06) as string[];
@@ -76,7 +72,7 @@ export async function downloadCertificatePdf(id: string): Promise<void> {
   });
   (["inicial", "final"] as const).forEach((kd, r) => {
     const m = c.certificate_measurements.find((z) => z.kind === kd);
-    const vals = [kd.toUpperCase(), fd(m?.measured_date ?? null), (m?.measured_time ?? "").slice(0, 5), n(m?.product_level, 3), n(m?.water_level, 3), n(m?.api_gravity, 2), n(m?.temp_f, 1), n(m?.avg_temp_f, 1), n(m?.api_60f, 2), n(m?.tov), n(m?.free_water), n(m?.vcf, 6), n(m?.gsv)];
+    const vals = [kd.toUpperCase(), n(m?.gsv)];
     let cx = 0.5; cols.forEach((k, i) => { box(cx, ty + 0.5 + r * 0.28, k.w, 0.28); t(vals[i], cx, ty + 0.5 + r * 0.28, k.w, 0.28, 8, i === 0, "center"); cx += k.w; });
   });
 
@@ -84,7 +80,6 @@ export async function downloadCertificatePdf(id: string): Promise<void> {
   lv("TICKET DE MEDICIÓN N°", c.ticket_no ?? "", 0.5, 3.78, 4.2, 0.27, 1.9);
   lv("VOLUMEN TOTAL RECIBIDO/ENTREGADO (Litros)", n(c.total_volume), 5.2, 3.78, 5.3, 0.27, 3.7);
   lv("VOLUMEN REMITO (Litros)", n(c.remito_volume), 5.2, 4.05, 5.3, 0.27, 3.7);
-  lv("DIFERENCIA (Litros)", n(c.difference), 5.2, 4.32, 5.3, 0.27, 3.7);
 
   // Cisterna y precintos
   box(0.5, 4.67, 5.0, 0.25, "#BDD7EE"); t("DATOS DE CISTERNA", 0.5, 4.67, 5.0, 0.25, 8, true, "center");

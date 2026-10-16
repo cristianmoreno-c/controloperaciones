@@ -1,13 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { Navigate, NavLink, Outlet, Route, Routes, useLocation, useNavigate } from "react-router-dom";
-import { BarChart3, Building2, FileText, Gauge, Layers, ListChecks, LayoutDashboard, Sun as SunIcon, Truck, Moon, Target, Settings, Sun, Users } from "lucide-react";
+import { BarChart3, Building2, FileText, Gauge, ListChecks, LayoutDashboard, Sun as SunIcon, Truck, Moon, Target, Settings, Sun, Users } from "lucide-react";
 import { useAuth } from "./auth";
 import { configured, supabase } from "./lib/supabase";
 import Login from "./pages/Login";
 import Certificados from "./pages/Certificados";
 import Usuarios from "./pages/Usuarios";
 import Contactos from "./pages/Contactos";
-import Pipeline from "./pages/Pipeline";
 import Oportunidades from "./pages/Oportunidades";
 import Configuracion from "./pages/Configuracion";
 import Servicios from "./pages/Servicios";
@@ -18,7 +17,6 @@ import Actividades from "./pages/Actividades";
 import SearchBox from "./SearchBox";
 import Reportes from "./pages/Reportes";
 import Volumenes from "./pages/Volumenes";
-import Reasignacion from "./pages/Reasignacion";
 
 function Layout() {
   const { profile, signOut, setTheme } = useAuth();
@@ -56,9 +54,7 @@ function Layout() {
         <div className="grp">Comercial</div>
         <NavLink to="/empresas" className="nav"><Building2 size={16} />Empresas</NavLink>
         <NavLink to="/contactos" className="nav"><Users size={16} />Contactos</NavLink>
-        {(profile.role === "admin" || profile.role === "sup_comercial") && <NavLink to="/reasignacion" className="nav"><Users size={16} />Reasignar leads</NavLink>}
         <NavLink to="/oportunidades" className="nav"><Target size={16} />Oportunidades</NavLink>
-        <NavLink to="/pipeline" className="nav"><Layers size={16} />Pipeline comercial</NavLink>
         <div className="grp">Operaciones</div>
         <NavLink to="/servicios" className="nav"><Truck size={16} />Servicios operativos</NavLink>
         <NavLink to="/actividades" className="nav"><ListChecks size={16} />Actividades</NavLink>
@@ -99,10 +95,8 @@ export default function App() {
         <Route path="/volumenes" element={<Volumenes />} />
         <Route path="/reportes" element={<Reportes />} />
         <Route path="/contactos" element={<Contactos />} />
-        <Route path="/reasignacion" element={profile.role === "admin" || profile.role === "sup_comercial" ? <Reasignacion /> : <Navigate to="/" replace />} />
         <Route path="/oportunidades" element={<Oportunidades />} />
         <Route path="/configuracion" element={profile.role === "admin" ? <Configuracion /> : <Navigate to="/" replace />} />
-        <Route path="/pipeline" element={<Pipeline />} />
         <Route path="/certificados" element={<Certificados />} />
         <Route path="/usuarios" element={profile.role === "admin" ? <Usuarios /> : <Navigate to="/" replace />} />
         <Route path="*" element={<Navigate to="/" replace />} />

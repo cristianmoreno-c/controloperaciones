@@ -22,7 +22,7 @@ export default function Empresas() {
   const [nc, setNc] = useState({ name: "", tax: "", city: "", address: "" });
   const [ed, setEd] = useState({ name: "", tax: "", city: "", address: "" });
   const [np, setNp] = useState({ name: "", loc: "" });
-  const [pr, setPr] = useState({ product: "", other: "", plant: "" });
+  const [pr, setPr] = useState({ product: "", plant: "" });
   const [sv, setSv] = useState({ service: "", plant: "", notes: "" });
 
   const loadCos = useCallback(async () => {
@@ -54,15 +54,9 @@ export default function Empresas() {
   const addPlant = async (e: FormEvent) => { e.preventDefault(); if (!sel) return; const { error } = await supabase.from("plants").insert({ company_id: sel.id, name: np.name.trim(), location: np.loc || null }); setNp({ name: "", loc: "" }); after(error); };
   const togPlant = async (p: Plant) => { const { error } = await supabase.from("plants").update({ active: !p.active }).eq("id", p.id); after(error); };
   const addProduct = async (e: FormEvent) => {
-    e.preventDefault(); if (!sel) return;
-    let pid = pr.product;
-    if (!pid && pr.other.trim()) {
-      const { data, error } = await supabase.from("products").insert({ name: pr.other.trim() }).select("id").single();
-      if (error) { setErr(error.message.includes("duplicate") ? "Ese producto ya existe: elígelo de la lista." : error.message); return; }
-      pid = (data as { id: string }).id; loadCatalogs();
-    }
-    const { error } = await supabase.from("company_products").insert({ company_id: sel.id, product_id: pid, plant_id: pr.plant || null });
-    setPr({ product: "", other: "", plant: "" }); after(error);
+    e.preventDefault(); if (!sel || !pr.product) return;
+    const { error } = await supabase.from("company_products").insert({ company_id: sel.id, product_id: pr.product, plant_id: pr.plant || null });
+    setPr({ product: "", plant: "" }); after(error);
   };
   const addService = async (e: FormEvent) => { e.preventDefault(); if (!sel) return; const { error } = await supabase.from("company_services").insert({ company_id: sel.id, service_id: sv.service, plant_id: sv.plant || null, notes: sv.notes || null }); setSv({ service: "", plant: "", notes: "" }); after(error); };
   const del = async (table: "company_products" | "company_services", id: string) => { const { error } = await supabase.from(table).delete().eq("id", id); after(error); };
@@ -97,10 +91,9 @@ export default function Empresas() {
         {cps.map((r) => <div key={r.id} style={{ display: "flex", gap: 8, alignItems: "center", minHeight: 34 }}><b>{r.products?.name}</b><span className="note">→ {r.plants?.name ?? "planta por definir"}</span><button className="btn d" aria-label="Quitar producto" onClick={() => void del("company_products", r.id)}>Quitar</button></div>)}
         {!cps.length && <p className="note">Sin productos registrados.</p>}
         <form onSubmit={(e) => void addProduct(e)} style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 6 }}>
-          <select className="in" style={{ maxWidth: 160 }} aria-label="Producto" value={pr.product} onChange={(e) => setPr({ ...pr, product: e.target.value, other: "" })}><option value="">Producto…</option>{products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
-          <input className="in" style={{ maxWidth: 150 }} placeholder="…u otro producto" aria-label="Otro producto" disabled={Boolean(pr.product)} value={pr.other} onChange={(e) => setPr({ ...pr, other: e.target.value })} />
+          <select className="in" style={{ maxWidth: 160 }} aria-label="Producto" value={pr.product} onChange={(e) => setPr({ ...pr, product: e.target.value })}><option value="">Producto…</option>{products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
           {plantSel(pr.plant, (x) => setPr({ ...pr, plant: x }), "Planta de llegada", "Planta por definir")}
-          <button className="btn" disabled={!pr.product && !pr.other.trim()}>Agregar producto</button></form>
+          <button className="btn" disabled={!pr.product}>Agregar producto</button></form>
 
         <h2 style={{ marginTop: 14 }}>Servicios que necesita</h2>
         {css.map((r) => <div key={r.id} style={{ display: "flex", gap: 8, alignItems: "center", minHeight: 34, flexWrap: "wrap" }}><b>{r.services_catalog?.name}</b><span className="note">→ {r.plants?.name ?? "todas las plantas"}{r.notes ? ` · ${r.notes}` : ""}</span><button className="btn d" aria-label="Quitar servicio" onClick={() => void del("company_services", r.id)}>Quitar</button></div>)}

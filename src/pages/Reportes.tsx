@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
-import { Download } from "lucide-react";
+import { Download, FileSpreadsheet } from "lucide-react";
+import * as XLSX from "xlsx";
 import { supabase } from "../lib/supabase";
 
 interface Tbl { head: string[]; rows: (string | number)[][]; note?: string }
-const TABS = ["Conversión", "Ventas", "Pérdidas", "Forecast", "Negociación", "Operativos"] as const;
+const TABS = ["Conversión", "Ventas", "Negociación", "Operativos"] as const;
 type Tab = (typeof TABS)[number];
 const day = (d: Date): string => d.toLocaleDateString("en-CA", { timeZone: "America/La_Paz" });
 const bs = (v: number): string => "Bs " + v.toLocaleString("es-BO", { maximumFractionDigits: 2 });
@@ -29,19 +30,6 @@ async function build(tab: Tab, from: string, to: string): Promise<Tbl> {
     const by = (f: (x: (typeof w)[number]) => string): (string | number)[][] => { const m: Record<string, number[]> = {}; w.forEach((x) => { (m[f(x)] ??= []).push(Number(x.amount)); }); return Object.entries(m).map(([k, v]) => [k, v.length, bs(sum(v))]); };
     return { head: ["Concepto", "Ventas", "Total"], rows: [["TOTAL del periodo", w.length, bs(tot)], ["Ticket promedio", "", w.length ? bs(tot / w.length) : "—"], ["Ciclo comercial promedio", "", w.length ? cyc.toFixed(1) + " días" : "—"], ...by((x) => "Vendedor: " + (x.profiles?.full_name ?? "Sin asignar")), ...by((x) => "Origen: " + (x.lead_sources?.name ?? "—"))] };
   }
-  if (tab === "Pérdidas") {
-    const { data, error } = await supabase.from("v_loss_summary").select("*");
-    if (error) return fail(error.message);
-    return { head: ["Motivo", "Oportunidades", "Monto"], rows: ((data as { reason: string; opportunities: number; amount: number }[]) ?? []).map((r) => [r.reason, r.opportunities, bs(Number(r.amount))]) };
-  }
-  if (tab === "Forecast") {
-    const m = to.slice(0, 7) + "-01";
-    const [k, g] = await Promise.all([supabase.rpc("dashboard_kpis", { p_from: m, p_to: to, p_owner: null, p_source: null, p_pipeline: null, p_company: null, p_plant: null }), supabase.from("goals").select("target").eq("month", m).is("user_id", null).maybeSingle()]);
-    if (k.error) return fail(k.error.message);
-    const x = k.data as { sales_period: number; weighted_value: number };
-    const goal = Number((g.data as { target: number } | null)?.target ?? 0);
-    return { head: ["Concepto", "Monto"], rows: [["Comprometido (ventas ganadas del mes)", bs(x.sales_period)], ["Probable (valor ponderado de abiertas)", bs(x.weighted_value)], ["Total", bs(x.sales_period + x.weighted_value)], ["Meta del mes", goal ? bs(goal) : "Sin meta cargada"]], note: "Probable = monto × probabilidad de las oportunidades abiertas." };
-  }
   if (tab === "Negociación") {
     const { data, error } = await supabase.from("negotiation_history").select("old_amount,new_amount").gte("created_at", from).lte("created_at", to + "T23:59:59");
     if (error) return fail(error.message);
@@ -56,6 +44,32 @@ async function build(tab: Tab, from: string, to: string): Promise<Tbl> {
   return { head: ["Indicador", "Valor"], rows: [["Órdenes solicitadas", cnt("solicitada")], ["Órdenes programadas", cnt("programada")], ["En ejecución", cnt("en_ejecucion")], ["Terminadas", cnt("terminada")], ["Monto acordado", bs(sum(os.map((x) => Number(x.agreed_amount))))], ["Monto recibido", bs(sum(os.map((x) => Number(x.received_amount))))], ["Saldo por cobrar", bs(sum(os.map((x) => Number(x.balance))))], ["Litros recibidos (periodo)", lt(Number(vol?.received ?? 0))], ["Litros entregados (periodo)", lt(Number(vol?.delivered ?? 0))], ["Certificados (periodo)", vol?.certificates ?? 0]], note: "Control interno: no hay conexión bancaria." };
 }
 
+interface CertX {
+  number: string; cert_date: string; status: string; operation: string; product: string | null; tank_no: string | null; ticket_no: string | null; storage_lot: string | null;
+  from_dispatcher: string | null; to_receiver: string | null; from_delivery_point: string | null; to_reception_point: string | null;
+  total_volume: number | null; remito_volume: number | null; driver: string | null; driver_id_card: string | null; plate: string | null; transport_company: string | null;
+  observations: string | null; sig_inspector_name: string | null; void_reason: string | null; created_at: string;
+  companies: { name: string } | null; plants: { name: string } | null;
+  certificate_measurements: { kind: string; gsv: number | null }[]; certificate_seals: { seal_no: string; sort: number }[];
+}
+async function exportCertificates(from: string, to: string): Promise<number> {
+  const { data, error } = await supabase.from("certificates").select("*, companies(name), plants(name), certificate_measurements(kind,gsv), certificate_seals(seal_no,sort)").gte("cert_date", from).lte("cert_date", to).order("cert_date").order("number");
+  if (error) throw new Error(error.message);
+  const rows = ((data as unknown as CertX[] | null) ?? []).map((c) => ({
+    "N°": c.number, "Fecha": c.cert_date, "Estado": c.status === "emitido" ? "Emitido" : "Anulado", "Operación": c.operation === "recepcion" ? "Recepción" : "Entrega",
+    "Cliente": c.companies?.name ?? "", "Planta": c.plants?.name ?? "", "Producto": c.product ?? "", "Expedido": c.from_dispatcher ?? "", "Receptor": c.to_receiver ?? "",
+    "Planta de carga": c.from_delivery_point ?? "", "Planta de descarga": c.to_reception_point ?? "", "Lote almacenaje": c.storage_lot ?? "", "Tanque": c.tank_no ?? "", "Ticket inspector": c.ticket_no ?? "",
+    "Inspector": c.sig_inspector_name ?? "", "Placa": c.plate ?? "", "Conductor": c.driver ?? "", "Carnet": c.driver_id_card ?? "", "Empresa de transporte": c.transport_company ?? "",
+    "Volumen inicial (L)": c.certificate_measurements.find((m) => m.kind === "inicial")?.gsv ?? "", "Volumen final (L)": c.certificate_measurements.find((m) => m.kind === "final")?.gsv ?? "",
+    "Volumen total (L)": c.total_volume ?? "", "Volumen remito (L)": c.remito_volume ?? "",
+    "Precintos": [...c.certificate_seals].sort((a, b) => a.sort - b.sort).map((x) => x.seal_no).join(", "),
+    "Observaciones": c.observations ?? "", "Motivo de anulación": c.void_reason ?? "", "Registrado": c.created_at.slice(0, 16).replace("T", " "),
+  }));
+  const ws = XLSX.utils.json_to_sheet(rows); const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Certificados"); XLSX.writeFile(wb, `certificados_${from}_a_${to}.xlsx`);
+  return rows.length;
+}
+
 export default function Reportes() {
   const now = new Date();
   const [tab, setTab] = useState<Tab>("Conversión");
@@ -64,6 +78,7 @@ export default function Reportes() {
   const [t, setT] = useState<Tbl | null>(null);
   const [err, setErr] = useState("");
   const [tick, setTick] = useState(0);
+  const [xmsg, setXmsg] = useState("");
   useEffect(() => { setT(null); setErr(""); build(tab, from, to).then(setT).catch((e: unknown) => setErr(e instanceof Error ? e.message : "Error")); }, [tab, from, to, tick]);
   const csv = () => {
     if (!t) return;
@@ -72,9 +87,11 @@ export default function Reportes() {
     a.href = URL.createObjectURL(new Blob(["\ufeff" + [t.head, ...t.rows].map((r) => r.map(q).join(",")).join("\n")], { type: "text/csv;charset=utf-8" }));
     a.download = `reporte-${tab.toLowerCase()}.csv`; a.click();
   };
+  const xls = () => { setXmsg("Generando…"); exportCertificates(from, to).then((n) => setXmsg(n ? `✓ ${n} certificados exportados` : "No hay certificados en esas fechas")).catch((e: unknown) => setXmsg(e instanceof Error ? e.message : "Error al exportar")); };
   return (<>
     <div style={{ display: "flex", justifyContent: "space-between" }}><h1>Reportes</h1><button className="btn" onClick={csv} disabled={!t}><Download size={14} /> Exportar CSV</button></div>
-    <div className="card" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}><input className="in" style={{ width: 150 }} type="date" aria-label="Desde" value={from} onChange={(e) => setFrom(e.target.value)} /><input className="in" style={{ width: 150 }} type="date" aria-label="Hasta" value={to} onChange={(e) => setTo(e.target.value)} /></div>
+    <div className="card" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}><input className="in" style={{ width: 150 }} type="date" aria-label="Desde" value={from} onChange={(e) => setFrom(e.target.value)} /><input className="in" style={{ width: 150 }} type="date" aria-label="Hasta" value={to} onChange={(e) => setTo(e.target.value)} />
+      {tab === "Operativos" && <><button className="btn p" onClick={xls}><FileSpreadsheet size={14} /> Descargar certificados (Excel)</button><span className="note">{xmsg}</span></>}</div>
     <div className="tabs" role="tablist">{TABS.map((x) => <button key={x} role="tab" aria-selected={tab === x} onClick={() => setTab(x)}>{x}</button>)}</div>
     <div className="card">{err && <p className="err" role="alert">{err} <button className="btn" onClick={() => setTick(tick + 1)}>Reintentar</button></p>}
       {!t && !err && <p className="note">Cargando…</p>}
